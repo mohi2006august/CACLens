@@ -1,0 +1,64 @@
+name: caclens
+version: "0.1.0"
+config-version: 2
+profile: caclens
+
+# The dbt project lives at the repo root so `dbt build` works from there;
+# all dbt sources are under dbt/.
+model-paths: ["dbt/models"]
+seed-paths: ["dbt/seeds"]
+macro-paths: ["dbt/macros"]
+test-paths: ["dbt/tests"]
+analysis-paths: ["dbt/analyses"]
+snapshot-paths: ["dbt/snapshots"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # FR-04: gross margin applied to net revenue for LTV and payback.
+  gross_margin: 0.80
+  # FR-05: touchpoints older than this before purchase get no credit.
+  attribution_lookback_days: 365
+  time_decay_half_life_days: 7
+  # PRD NFR: marts must reconcile to source totals within 2%.
+  reconciliation_tolerance: 0.02
+
+models:
+  caclens:
+    staging:
+      +schema: staging
+      +materialized: view
+    journeys:
+      +schema: journeys
+      +materialized: table
+    costs:
+      +schema: costs
+      +materialized: table
+    cohorts:
+      +schema: cohorts
+      +materialized: table
+    marts:
+      +schema: marts
+      +materialized: table
+
+seeds:
+  caclens:
+    +schema: reference
+    channels:
+      +column_types:
+        channel: varchar
+        channel_label: varchar
+        channel_group: varchar
+        is_paid: boolean
+        sort_order: integer
+    channel_mapping:
+      +column_types:
+        utm_source: varchar
+        utm_medium: varchar
+        channel: varchar
+    cost_allocation_rules:
+      +column_types:
+        team: varchar
+        basis: varchar
+        channel: varchar
+        share: double

@@ -1,0 +1,11 @@
+channel,channel_label,channel_group,is_paid,sort_order
+google_search,Google Search,Paid search,true,1
+meta_ads,Meta Ads,Paid social,true,2
+linkedin_ads,LinkedIn Ads,Paid social,true,3
+organic_search,Organic Search,Organic,false,4
+referral,Referral,Referral,false,5
+email,Email,Owned,false,6
+direct,Direct,Direct,false,7
+other,Other,Other,false,8
+unattributed,Unattributed,Unattributed,false,9
+unallocated,Unallocated costs,Unallocated,false,10

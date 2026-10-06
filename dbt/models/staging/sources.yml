@@ -1,0 +1,37 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    description: Raw tables written by the loaders in pipelines/ (contract in pipelines/schema.py).
+    loaded_at_field: loaded_at
+    freshness:
+      warn_after: {count: 36, period: hour}
+      error_after: {count: 72, period: hour}
+    tables:
+      - name: ad_spend_daily
+        description: Daily campaign spend, impressions and clicks (Google Ads, Meta, LinkedIn).
+      - name: crm_contacts
+        description: CRM contacts/leads; emails are SHA-256 hashed at extraction.
+      - name: crm_touchpoints
+        description: UTM-tagged marketing touches per contact.
+      - name: crm_deals
+        description: CRM deals/opportunities.
+      - name: stripe_customers
+        description: Stripe customers.
+      - name: stripe_invoices
+        description: Stripe paid invoices with their service period.
+      - name: stripe_refunds
+        description: Stripe refunds.
+      - name: stripe_disputes
+        description: Stripe disputes (chargebacks).
+      - name: payroll_costs
+        description: Monthly people cost per employee and team.
+        freshness:
+          warn_after: {count: 45, period: day}
+          error_after: {count: 75, period: day}
+      - name: tool_costs
+        description: Monthly tool cost per team.
+        freshness:
+          warn_after: {count: 45, period: day}
+          error_after: {count: 75, period: day}

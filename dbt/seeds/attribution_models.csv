@@ -1,0 +1,6 @@
+attribution_model,label,description,sort_order
+first_touch,First touch,100% of the credit to the first touchpoint.,1
+last_touch,Last touch,100% of the credit to the last touchpoint before purchase.,2
+linear,Linear,Equal credit to every touchpoint.,3
+time_decay,Time decay,Credit halves for every 7 days between the touch and the purchase.,4
+position_based,Position-based,"40% to the first touch, 40% to the last, 20% spread across the middle.",5

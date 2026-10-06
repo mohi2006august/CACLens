@@ -1,0 +1,72 @@
+version: 2
+
+models:
+  - name: fct_acquisition_daily
+    description: >
+      Semantic model `acquisition`. Additive spend, allocated cost and funnel measures per
+      day, channel, campaign, segment and attribution model. Ratios live in semantic/metrics.yml.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date_day, channel, campaign, segment, attribution_model]
+    columns:
+      - name: date_day
+        data_tests: [not_null]
+      - name: channel
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('channels')
+                field: channel
+      - name: segment
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [smb, mid_market, enterprise, unknown]
+      - name: attribution_model
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [first_touch, last_touch, linear, time_decay, position_based]
+      - name: paid_spend
+        data_tests: [non_negative]
+      - name: new_customers
+        data_tests: [non_negative]
+
+  - name: fct_customer_revenue_monthly
+    description: >
+      Semantic model `customer_revenue`. Credit-weighted revenue, active/churned customers and
+      gross-margin revenue per revenue month, cohort, channel, campaign, segment and model.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              [revenue_month, cohort_month, channel, campaign, segment, attribution_model]
+    columns:
+      - name: months_since_acquisition
+        data_tests: [not_null, non_negative]
+      - name: attribution_model
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [first_touch, last_touch, linear, time_decay, position_based]
+
+  - name: customer_journeys
+    description: FR-02 unified journey table, one row per paying customer.
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+
+  - name: dim_channels
+    columns:
+      - name: channel
+        data_tests: [unique, not_null]
+
+  - name: dim_attribution_models
+    columns:
+      - name: attribution_model
+        data_tests: [unique, not_null]
+
+  - name: source_freshness
+    description: Row count and last load time per raw table.

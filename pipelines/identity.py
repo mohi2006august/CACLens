@@ -2,28 +2,21 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import re
+from pathlib import Path
 
-FREE_EMAIL_DOMAINS = frozenset(
-    {
-        "gmail.com",
-        "googlemail.com",
-        "yahoo.com",
-        "hotmail.com",
-        "outlook.com",
-        "live.com",
-        "icloud.com",
-        "me.com",
-        "aol.com",
-        "proton.me",
-        "protonmail.com",
-        "gmx.com",
-        "mail.com",
-        "yandex.com",
-        "zoho.com",
-    }
-)
+_SEEDS = Path(__file__).resolve().parent.parent / "dbt" / "seeds"
+
+
+def _load_free_domains() -> frozenset[str]:
+    # Defined once, in the dbt seed that SQL identity stitching also uses.
+    with (_SEEDS / "free_email_domains.csv").open(encoding="utf-8") as fh:
+        return frozenset(row["domain"].strip().lower() for row in csv.DictReader(fh))
+
+
+FREE_EMAIL_DOMAINS = _load_free_domains()
 
 SEGMENTS = ("smb", "mid_market", "enterprise")
 

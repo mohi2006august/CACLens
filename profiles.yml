@@ -1,0 +1,8 @@
+caclens:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Same variable the API and loaders use; relative paths resolve from the repo root.
+      path: "{{ env_var('WAREHOUSE_URL', 'data/caclens.duckdb') }}"
+      threads: 4

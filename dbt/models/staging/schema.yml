@@ -1,0 +1,83 @@
+version: 2
+
+models:
+  - name: stg_ad_spend
+    description: One row per platform campaign-day with the channel it maps to.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_system, campaign_id, date_day]
+    columns:
+      - name: channel
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('channels')
+                field: channel
+      - name: spend
+        data_tests: [not_null, non_negative]
+
+  - name: stg_crm_contacts
+    description: CRM contacts with hashed email, company domain and normalised segment.
+    columns:
+      - name: contact_key
+        data_tests: [unique, not_null]
+      - name: segment
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [smb, mid_market, enterprise, unknown]
+
+  - name: stg_crm_touchpoints
+    description: Touchpoints with UTM tags mapped to a channel via the channel_mapping seed.
+    columns:
+      - name: touchpoint_key
+        data_tests: [unique, not_null]
+      - name: channel
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('channels')
+                field: channel
+
+  - name: stg_crm_deals
+    columns:
+      - name: deal_key
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe_customers
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe_invoices
+    description: Paid invoices in major currency units with a non-empty service period.
+    columns:
+      - name: invoice_id
+        data_tests: [unique, not_null]
+      - name: amount
+        data_tests: [not_null, non_negative]
+
+  - name: stg_stripe_refunds
+    columns:
+      - name: refund_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe_disputes
+    columns:
+      - name: dispute_id
+        data_tests: [unique, not_null]
+
+  - name: stg_payroll_costs
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [month, employee_id]
+
+  - name: stg_tool_costs
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [month, tool]

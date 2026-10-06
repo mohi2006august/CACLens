@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: int_team_costs_monthly
+    description: People and tool cost per team and month.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [month, team, cost_type]
+
+  - name: int_allocation_basis
+    description: Monthly spend and lead shares per channel used by dynamic allocation rules.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [month, channel]
+
+  - name: int_cost_allocation_monthly
+    description: FR-03 team costs allocated to channels; totals always equal the inputs.
+    columns:
+      - name: channel
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('channels')
+                field: channel
+
+  - name: int_segment_shares
+    description: Monthly lead mix by segment within each channel.
+    columns:
+      - name: segment_share
+        data_tests:
+          - sums_to:
+              arguments:
+                group_by: [month, channel]
+                expected: 1
+
+  - name: int_marketing_daily
+    description: Spend, allocated costs and funnel volumes per day, channel, campaign and segment.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date_day, channel, campaign, segment]

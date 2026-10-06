@@ -4,8 +4,8 @@ It writes the same raw tables the real connectors load (see `pipelines/schema.py
 so dbt, the semantic layer and the app run end to end without any credentials.
 
 Built-in story for the demo: from 2026-02-20 to 2026-04-10 a new Meta lookalike
-audience brings in low-quality leads (lead -> customer CVR roughly halves) and CPCs
-rise ~15%, so paid social CAC jumps in March 2026.
+audience brings in low-quality leads (lead -> customer CVR drops ~65%) and CPCs
+rise ~20%, so paid social CAC jumps in March 2026.
 """
 
 from __future__ import annotations
@@ -243,7 +243,7 @@ class _Generator:
         rng = self.rng
         spike = campaign.channel == "meta_ads" and _in_meta_spike(day)
         spend = campaign.daily_budget * self.scale * _season(day) * rng.lognormvariate(0, 0.12)
-        cpc = campaign.cpc * rng.lognormvariate(0, 0.08) * (1.15 if spike else 1.0)
+        cpc = campaign.cpc * rng.lognormvariate(0, 0.08) * (1.2 if spike else 1.0)
         clicks = max(0, round(spend / cpc))
         impressions = round(clicks / (campaign.ctr * rng.lognormvariate(0, 0.1))) if clicks else 0
         self.data.add(
@@ -280,7 +280,7 @@ class _Generator:
         self._touch(contact_id, created_at, source, medium, campaign, "form_fill")
 
         spike = channel == "meta_ads" and _in_meta_spike(day)
-        p_convert = customer_cvr * profile.cvr_mult * (0.45 if spike else 1.0)
+        p_convert = customer_cvr * profile.cvr_mult * (0.35 if spike else 1.0)
         converts = rng.random() < p_convert
         convert_at: datetime | None = None
         if converts:
