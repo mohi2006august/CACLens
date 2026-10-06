@@ -42,3 +42,6 @@ data/*.duckdb.wal
 Thumbs.db
 .vscode/
 .idea/
+
+# dlt pipeline state
+data/.dlt/

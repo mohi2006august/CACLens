@@ -12,6 +12,8 @@ import duckdb
 
 RAW_SCHEMA = "raw"
 
+DLT_SYSTEM_COLUMNS = {"_dlt_load_id": "VARCHAR", "_dlt_id": "VARCHAR"}
+
 # DuckDB type -> dlt data type, used for dlt column hints.
 DLT_TYPES = {
     "VARCHAR": "text",
@@ -43,7 +45,10 @@ class RawTable:
         return hints
 
     def create_sql(self) -> str:
-        cols = ",\n  ".join(f"{c} {t}" for c, t in self.columns.items())
+        # dlt's bookkeeping columns are created up front: DuckDB cannot ALTER TABLE
+        # ADD a column with constraints, which dlt would otherwise attempt.
+        columns = {**self.columns, **DLT_SYSTEM_COLUMNS}
+        cols = ",\n  ".join(f"{c} {t}" for c, t in columns.items())
         return f"CREATE TABLE IF NOT EXISTS {RAW_SCHEMA}.{self.name} (\n  {cols}\n)"
 
 

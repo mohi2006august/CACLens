@@ -477,9 +477,13 @@ def write_raw(conn: duckdb.DuckDBPyConnection, data: DemoData) -> dict[str, int]
                 writer = csv.writer(fh)
                 writer.writerow(table.columns)
                 writer.writerows([_csv_value(v) for v in row] for row in rows)
+            col_list = ", ".join(table.columns)
+            col_types = ", ".join(f"'{c}': '{t}'" for c, t in table.columns.items())
             conn.execute(f"DELETE FROM {RAW_SCHEMA}.{name}")
             conn.execute(
-                f"COPY {RAW_SCHEMA}.{name} FROM '{path.as_posix()}' (HEADER, NULLSTR '')"
+                f"INSERT INTO {RAW_SCHEMA}.{name} ({col_list}) "
+                f"SELECT {col_list} FROM read_csv('{path.as_posix()}', header = true, "
+                f"nullstr = '', columns = {{{col_types}}})"
             )
             counts[name] = len(rows)
     log.info("demo_raw_loaded", **counts)
