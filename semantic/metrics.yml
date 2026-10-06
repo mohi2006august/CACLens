@@ -1,0 +1,377 @@
+# CACLens semantic layer: every metric is defined once, here.
+#
+# - semantic_models map additive measures onto dbt marts.
+# - metrics are simple (one measure), ratio (numerator / denominator) or derived
+#   (an expression over other metrics, referenced as {metric_name}).
+# - A metric input may carry `filters` (e.g. paid channels only) and an `offset_months`
+#   (lagged CAC: spend this month acquires customers next month).
+# - `fully_loaded_variant` names the metric the "fully loaded" toggle switches to.
+#
+# The API, dashboards, alerts and the Q&A agent all query through this file.
+version: 1
+
+semantic_models:
+  - name: acquisition
+    table: marts.fct_acquisition_daily
+    description: Spend, allocated costs and funnel volumes per day, channel, campaign, segment and attribution model.
+    time_dimension: date_day
+    min_grain: day
+    dimensions: [channel, campaign, segment, attribution_model, cohort_month, is_paid_channel]
+    measures:
+      paid_spend: {agg: sum, description: Media spend reported by ad platforms.}
+      people_cost: {agg: sum, description: Salaries allocated to the channel by allocation rules.}
+      tool_cost: {agg: sum, description: Tool/SaaS cost allocated to the channel.}
+      fully_loaded_spend: {agg: sum, description: Paid spend plus allocated people and tool cost.}
+      impressions: {agg: sum, description: Ad impressions.}
+      clicks: {agg: sum, description: Ad clicks to the site.}
+      leads: {agg: sum, description: New leads, attributed to the touch that created them.}
+      opportunities: {agg: sum, description: CRM deals created.}
+      new_customers: {agg: sum, description: New paying customers (attribution credit weighted).}
+
+  - name: customer_revenue
+    table: marts.fct_customer_revenue_monthly
+    description: Credit-weighted revenue, activity and churn per revenue month, cohort and channel.
+    time_dimension: revenue_month
+    min_grain: month
+    dimensions:
+      [channel, campaign, segment, attribution_model, cohort_month, months_since_acquisition, is_paid_channel]
+    measures:
+      cohort_customers: {agg: sum, description: Customers acquired in the cohort (counted in their first month).}
+      active_customers: {agg: sum, description: Customer-months with recognised revenue.}
+      starting_customers: {agg: sum, description: Customers active in the previous month.}
+      churned_customers: {agg: sum, description: Customers active last month but not this month.}
+      gross_revenue: {agg: sum, description: Recognised invoice revenue.}
+      refunds_and_chargebacks: {agg: sum, description: Refunds and disputed (chargeback) amounts.}
+      net_revenue: {agg: sum, description: Recognised revenue minus refunds and chargebacks.}
+      gross_margin_revenue: {agg: sum, description: Net revenue times gross margin.}
+
+dimensions:
+  channel:
+    type: string
+    label: Channel
+    description: Marketing channel (google_search, meta_ads, linkedin_ads, organic_search, referral, email, direct, unattributed, unallocated).
+  campaign:
+    type: string
+    label: Campaign
+    description: Normalised campaign name (lower_snake_case). Allocated people/tool costs use "(unallocated)".
+  segment:
+    type: string
+    label: Segment
+    description: Customer segment by company size.
+    values: [smb, mid_market, enterprise, unknown]
+  attribution_model:
+    type: string
+    label: Attribution model
+    description: How purchase credit is split across touchpoints. Defaults to position_based.
+    values: [first_touch, last_touch, linear, time_decay, position_based]
+  cohort_month:
+    type: date
+    label: Cohort month
+    description: Month the customer was acquired (first paid invoice).
+  months_since_acquisition:
+    type: integer
+    label: Months since acquisition
+    description: 0 for the acquisition month, 1 for the next month, and so on.
+  is_paid_channel:
+    type: boolean
+    label: Paid channel
+    description: True for channels with media spend (Google Search, Meta Ads, LinkedIn Ads).
+
+metrics:
+  # --- Spend and volume ------------------------------------------------------------
+  paid_spend:
+    fully_loaded_variant: fully_loaded_spend
+    label: Paid spend
+    type: simple
+    measure: paid_spend
+    format: currency
+    description: Media spend reported by Google Ads, Meta and LinkedIn.
+    formula: "sum of ad-platform spend"
+  people_cost:
+    label: People cost
+    type: simple
+    measure: people_cost
+    format: currency
+    description: Sales and marketing salaries allocated to channels.
+    formula: "sum of allocated payroll"
+  tool_cost:
+    label: Tool cost
+    type: simple
+    measure: tool_cost
+    format: currency
+    description: Sales and marketing tools allocated to channels.
+    formula: "sum of allocated tool cost"
+  fully_loaded_spend:
+    label: Fully loaded spend
+    type: simple
+    measure: fully_loaded_spend
+    format: currency
+    description: Paid spend plus allocated people and tool cost.
+    formula: "paid spend + people cost + tool cost"
+  impressions:
+    label: Impressions
+    type: simple
+    measure: impressions
+    format: number
+    description: Ad impressions.
+    formula: "sum of impressions"
+  clicks:
+    label: Clicks
+    type: simple
+    measure: clicks
+    format: number
+    description: Ad clicks to the site.
+    formula: "sum of clicks"
+  leads:
+    label: Leads
+    type: simple
+    measure: leads
+    format: number
+    description: New leads, credited to the touch that created them.
+    formula: "count of new leads"
+  opportunities:
+    label: Opportunities
+    type: simple
+    measure: opportunities
+    format: number
+    description: CRM deals created.
+    formula: "count of deals created"
+  new_customers:
+    label: New customers
+    type: simple
+    measure: new_customers
+    format: number
+    description: New paying customers, split across channels by the attribution model.
+    formula: "sum of attribution credit for first payments"
+
+  # --- Funnel rates (FR-06 decomposition factors) -----------------------------------
+  ctr:
+    label: CTR
+    type: ratio
+    numerator: clicks
+    denominator: impressions
+    format: percent
+    description: Share of impressions that were clicked.
+    formula: "clicks / impressions"
+  cpc:
+    label: CPC
+    type: ratio
+    numerator: paid_spend
+    denominator: clicks
+    format: currency
+    description: Cost per click.
+    formula: "paid spend / clicks"
+  lead_cvr:
+    label: Click to lead CVR
+    type: ratio
+    numerator: leads
+    denominator: clicks
+    format: percent
+    description: Share of clicks that became leads.
+    formula: "leads / clicks"
+  opportunity_rate:
+    label: Lead to opportunity rate
+    type: ratio
+    numerator: opportunities
+    denominator: leads
+    format: percent
+    description: Share of leads that became opportunities.
+    formula: "opportunities / leads"
+  customer_cvr:
+    label: Lead to customer CVR
+    type: ratio
+    numerator: new_customers
+    denominator: leads
+    format: percent
+    description: New customers per lead.
+    formula: "new customers / leads"
+  cost_per_lead:
+    label: Cost per lead
+    type: ratio
+    numerator: paid_spend
+    denominator: leads
+    format: currency
+    description: Paid spend per lead.
+    formula: "paid spend / leads"
+
+  # --- CAC (FR-03) -----------------------------------------------------------------
+  cac:
+    fully_loaded_variant: cac_fully_loaded
+    label: CAC
+    type: ratio
+    numerator: paid_spend
+    denominator: new_customers
+    format: currency
+    description: Customer acquisition cost from media spend. Unsliced, it is blended paid-media CAC across all new customers.
+    formula: "paid spend / new customers"
+  cac_fully_loaded:
+    label: Fully loaded CAC
+    type: ratio
+    numerator: fully_loaded_spend
+    denominator: new_customers
+    format: currency
+    description: CAC including allocated salaries and tools. Unsliced, it is blended fully loaded CAC.
+    formula: "(paid spend + people cost + tool cost) / new customers"
+  paid_cac:
+    label: Paid CAC
+    type: ratio
+    numerator: paid_spend
+    denominator:
+      measure: new_customers
+      filters:
+        - {dimension: is_paid_channel, op: eq, value: true}
+    format: currency
+    description: Media spend divided by customers attributed to paid channels only.
+    formula: "paid spend / new customers from paid channels"
+  cac_lagged:
+    fully_loaded_variant: cac_fully_loaded_lagged
+    label: Lagged CAC (1 month)
+    type: ratio
+    numerator:
+      measure: paid_spend
+      offset_months: 1
+    denominator: new_customers
+    format: currency
+    description: Last month's paid spend divided by this month's new customers, for sales cycles where spend acquires customers a month later.
+    formula: "paid spend (previous month) / new customers"
+  cac_fully_loaded_lagged:
+    label: Lagged fully loaded CAC (1 month)
+    type: ratio
+    numerator:
+      measure: fully_loaded_spend
+      offset_months: 1
+    denominator: new_customers
+    format: currency
+    description: Last month's fully loaded spend divided by this month's new customers.
+    formula: "fully loaded spend (previous month) / new customers"
+  unattributed_share:
+    label: Unattributed share
+    type: ratio
+    numerator:
+      measure: new_customers
+      filters:
+        - {dimension: channel, op: eq, value: unattributed}
+    denominator: new_customers
+    format: percent
+    description: Share of new customers with no known source touchpoint (fix UTMs to reduce it).
+    formula: "unattributed new customers / new customers"
+
+  # --- Revenue, LTV and payback (FR-04) ----------------------------------------------
+  net_revenue:
+    label: Net revenue
+    type: simple
+    measure: net_revenue
+    format: currency
+    description: Recognised revenue after refunds and chargebacks.
+    formula: "recognised revenue - refunds - chargebacks"
+  gross_revenue:
+    label: Gross revenue
+    type: simple
+    measure: gross_revenue
+    format: currency
+    description: Recognised invoice revenue before refunds and chargebacks.
+    formula: "sum of recognised invoice revenue"
+  refunds_and_chargebacks:
+    label: Refunds and chargebacks
+    type: simple
+    measure: refunds_and_chargebacks
+    format: currency
+    description: Refunded and disputed amounts, which reduce LTV.
+    formula: "refunds + chargebacks"
+  gross_margin_revenue:
+    label: Gross margin
+    type: simple
+    measure: gross_margin_revenue
+    format: currency
+    description: Net revenue times gross margin.
+    formula: "net revenue x gross margin"
+  active_customers:
+    label: Active customer-months
+    type: simple
+    measure: active_customers
+    format: number
+    description: Customer-months with recognised revenue.
+    formula: "count of active customer-months"
+  churned_customers:
+    label: Churned customers
+    type: simple
+    measure: churned_customers
+    format: number
+    description: Customers active last month but not this month.
+    formula: "count of churned customers"
+  cohort_customers:
+    label: Cohort size
+    type: simple
+    measure: cohort_customers
+    format: number
+    description: Customers acquired in the cohort.
+    formula: "customers in their acquisition month"
+  arpa:
+    label: ARPA
+    type: ratio
+    numerator: net_revenue
+    denominator: active_customers
+    format: currency
+    description: Average monthly net revenue per active account.
+    formula: "net revenue / active customer-months"
+  gross_margin_pct:
+    label: Gross margin %
+    type: ratio
+    numerator: gross_margin_revenue
+    denominator: net_revenue
+    format: percent
+    description: Gross margin as a share of net revenue.
+    formula: "gross margin / net revenue"
+  arpa_gm:
+    label: Gross-margin ARPA
+    type: ratio
+    numerator: gross_margin_revenue
+    denominator: active_customers
+    format: currency
+    description: Monthly gross margin per active account.
+    formula: "ARPA x gross margin"
+  monthly_churn:
+    label: Monthly churn
+    type: ratio
+    numerator: churned_customers
+    denominator: starting_customers
+    format: percent
+    description: Share of last month's active customers who did not renew.
+    formula: "churned customers / customers active last month"
+  ltv:
+    label: LTV
+    type: derived
+    expr: "least({arpa_gm} / nullif({monthly_churn}, 0), {arpa_gm} * 60)"
+    format: currency
+    description: Lifetime gross margin per customer, capped at 5 years.
+    formula: "ARPA x gross margin / monthly churn (capped at 60 months)"
+  ltv_cac:
+    fully_loaded_variant: ltv_cac_fully_loaded
+    label: LTV:CAC
+    type: derived
+    expr: "{ltv} / nullif({cac}, 0)"
+    format: ratio
+    description: Lifetime value per dollar of paid acquisition cost; ~3x is a common healthy benchmark.
+    formula: "LTV / CAC"
+  ltv_cac_fully_loaded:
+    label: LTV:CAC (fully loaded)
+    type: derived
+    expr: "{ltv} / nullif({cac_fully_loaded}, 0)"
+    format: ratio
+    description: Lifetime value per dollar of fully loaded acquisition cost.
+    formula: "LTV / fully loaded CAC"
+  payback_months:
+    fully_loaded_variant: payback_months_fully_loaded
+    label: CAC payback
+    type: derived
+    expr: "{cac} / nullif({arpa_gm}, 0)"
+    format: months
+    description: Months of gross margin needed to recover CAC.
+    formula: "CAC / (ARPA x gross margin)"
+  payback_months_fully_loaded:
+    label: CAC payback (fully loaded)
+    type: derived
+    expr: "{cac_fully_loaded} / nullif({arpa_gm}, 0)"
+    format: months
+    description: Months of gross margin needed to recover fully loaded CAC.
+    formula: "fully loaded CAC / (ARPA x gross margin)"

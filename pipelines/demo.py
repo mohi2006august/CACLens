@@ -101,9 +101,9 @@ ORGANIC: tuple[OrganicSource, ...] = (
 )
 
 SEGMENT_PROFILES = {
-    "smb": SegmentProfile(149, 40, 1.15, 0.045, 0.10, (3, 21)),
-    "mid_market": SegmentProfile(690, 150, 1.0, 0.022, 0.30, (10, 45)),
-    "enterprise": SegmentProfile(2900, 600, 0.7, 0.010, 0.60, (30, 90)),
+    "smb": SegmentProfile(99, 25, 1.15, 0.070, 0.10, (3, 21)),
+    "mid_market": SegmentProfile(420, 100, 1.0, 0.035, 0.30, (10, 45)),
+    "enterprise": SegmentProfile(1700, 380, 0.7, 0.016, 0.60, (30, 90)),
 }
 
 CHANNEL_CHURN_MULT = {

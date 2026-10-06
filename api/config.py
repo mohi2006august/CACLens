@@ -38,6 +38,7 @@ def resolve_path(raw: str) -> Path:
 @dataclass(frozen=True)
 class Settings:
     warehouse_path: Path
+    serving_dir: Path
     semantic_path: Path
     demo: bool
     anthropic_api_key: str | None
@@ -53,6 +54,7 @@ class Settings:
         origins = os.environ.get("CACLENS_CORS_ORIGINS", "http://localhost:3000")
         return cls(
             warehouse_path=resolve_path(os.environ.get("WAREHOUSE_URL", DEFAULT_WAREHOUSE)),
+            serving_dir=resolve_path(os.environ.get("CACLENS_SERVING_DIR", "data/serving")),
             semantic_path=resolve_path(
                 os.environ.get("CACLENS_SEMANTIC_PATH", "semantic/metrics.yml")
             ),

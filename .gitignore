@@ -45,3 +45,6 @@ Thumbs.db
 
 # dlt pipeline state
 data/.dlt/
+
+# Published serving snapshots
+data/serving/
