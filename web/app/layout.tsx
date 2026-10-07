@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Script from "next/script";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Suspense } from "react";
 
@@ -34,7 +35,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={`${inter.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <Script id="caclens-theme" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
       </head>
       <body>
         <a href="#main" className="sr-only">

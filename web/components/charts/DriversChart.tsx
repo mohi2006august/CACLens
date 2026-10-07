@@ -15,7 +15,7 @@ const LABEL_W = 190;
  * on its own. Raises CAC -> warm pole, lowers CAC -> cool pole; the sign and label
  * always carry the meaning too, never colour alone.
  */
-export function DriversChart({ drivers, title }: { drivers: Driver[]; title: string }) {
+export function DriversChart({ drivers, title, subject = "CAC" }: { drivers: Driver[]; title: string; subject?: string }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const summaryId = useId();
   if (!drivers.length) return <p className="muted">Not enough funnel data to decompose this change.</p>;
@@ -63,16 +63,16 @@ export function DriversChart({ drivers, title }: { drivers: Driver[]; title: str
         })}
       </svg>
       <p id={summaryId} className="sr-only">
-        {drivers.map((d) => `${d.label} changed ${signedPct(d.change_pct)} and moved CAC ${signedPct(d.cac_effect_pct)}.`).join(" ")}
+        {drivers.map((d) => `${d.label} changed ${signedPct(d.change_pct)} and moved ${subject} ${signedPct(d.cac_effect_pct)}.`).join(" ")}
       </p>
       <ul className="legend" style={{ marginTop: 4 }}>
         <li>
           <span className="swatch" style={{ background: "var(--raise)" }} aria-hidden />
-          Raises CAC
+          Raises {subject}
         </li>
         <li>
           <span className="swatch" style={{ background: "var(--lower)" }} aria-hidden />
-          Lowers CAC
+          Lowers {subject}
         </li>
       </ul>
       <details className="table-fallback">
@@ -84,7 +84,7 @@ export function DriversChart({ drivers, title }: { drivers: Driver[]; title: str
               <th className="r">Baseline</th>
               <th className="r">Current</th>
               <th className="r">Change</th>
-              <th className="r">Effect on CAC</th>
+              <th className="r">Effect on {subject}</th>
               <th className="r">Share of change</th>
             </tr>
           </thead>

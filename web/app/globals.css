@@ -266,6 +266,7 @@ h3 {
   font-size: 12px;
 }
 .main {
+  min-width: 0;
   padding: var(--s5) var(--s6) var(--s6);
   max-width: 1280px;
   width: 100%;
@@ -495,6 +496,9 @@ table.data th.r,
 table.data td.r {
   text-align: right;
 }
+table.data td:first-child {
+  white-space: nowrap;
+}
 table.data td.num,
 table.data td.r {
   font-family: var(--font-mono);
@@ -542,10 +546,13 @@ table.data tbody tr:hover {
   text-align: left;
   white-space: normal;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  opacity: 0;
+  display: none; /* hidden popovers must not widen the page */
   pointer-events: none;
-  transform: translateY(-2px);
-  transition: opacity 120ms ease, transform 120ms ease;
+}
+th.r .term-pop,
+td.r .term-pop {
+  left: auto;
+  right: 0;
 }
 .term-pop code {
   font-family: var(--font-mono);
@@ -557,8 +564,7 @@ table.data tbody tr:hover {
 .term:hover .term-pop,
 .term:focus .term-pop,
 .term:focus-within .term-pop {
-  opacity: 1;
-  transform: none;
+  display: block;
 }
 
 /* Charts ---------------------------------------------------------------- */

@@ -120,7 +120,11 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
                     </tbody>
                   </table>
                 </div>
-                <DriversChart drivers={a.drivers} title={`Drivers of the ${channelLabel(a.channel)} ${m.label} change`} />
+                <DriversChart
+                  drivers={a.drivers}
+                  title={`Drivers of the ${channelLabel(a.channel)} ${m.label} change`}
+                  subject={m.term === "cost_per_opportunity" ? "cost" : "CAC"}
+                />
               </div>
             </article>
           );

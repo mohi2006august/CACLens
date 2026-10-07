@@ -150,7 +150,7 @@ export default async function OptimiserPage({ searchParams }: { searchParams: Pr
           series={series}
           yFormat="currency"
           xType="number"
-          xLabel={(x) => `${Number(x).toFixed(2).replace(/\.?0+$/, "")}×`}
+          xFormat="multiplier"
           xAxisTitle="Spend vs today"
         />
       </section>

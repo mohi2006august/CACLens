@@ -50,15 +50,15 @@ select
     c.segment,
     coalesce(ch.is_paid, false) as is_paid_channel,
     c.attribution_model,
-    sum(c.paid_spend) as paid_spend,
-    sum(c.people_cost) as people_cost,
-    sum(c.tool_cost) as tool_cost,
-    sum(c.paid_spend + c.people_cost + c.tool_cost) as fully_loaded_spend,
-    sum(c.impressions) as impressions,
-    sum(c.clicks) as clicks,
-    sum(c.leads) as leads,
-    sum(c.opportunities) as opportunities,
-    sum(c.new_customers) as new_customers
+    cast(sum(c.paid_spend) as double) as paid_spend,
+    cast(sum(c.people_cost) as double) as people_cost,
+    cast(sum(c.tool_cost) as double) as tool_cost,
+    cast(sum(c.paid_spend + c.people_cost + c.tool_cost) as double) as fully_loaded_spend,
+    cast(sum(c.impressions) as double) as impressions,
+    cast(sum(c.clicks) as double) as clicks,
+    cast(sum(c.leads) as double) as leads,
+    cast(sum(c.opportunities) as double) as opportunities,
+    cast(sum(c.new_customers) as double) as new_customers
 from combined as c
 left join {{ ref('channels') }} as ch on ch.channel = c.channel
 group by all

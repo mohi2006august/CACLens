@@ -20,7 +20,8 @@ interface Props {
   series: LineSeries[];
   yFormat: MetricFormat;
   xType?: "date" | "number";
-  xLabel?: (x: string | number) => string;
+  /** Serializable x formatter (server components cannot pass functions). */
+  xFormat?: "month" | "months_since" | "multiplier";
   xAxisTitle?: string;
   height?: number;
   reference?: { y: number; label: string };
@@ -34,7 +35,7 @@ export function LineChart({
   series,
   yFormat,
   xType = "date",
-  xLabel,
+  xFormat = "month",
   xAxisTitle,
   height = 240,
   reference,
@@ -42,7 +43,11 @@ export function LineChart({
   const [ref, width] = useWidth<HTMLDivElement>();
   const summaryId = useId();
   const [active, setActive] = useState<number | null>(null);
-  const fmtX = xLabel ?? ((x: string | number) => (typeof x === "string" ? monthLabel(x) : String(x)));
+  const fmtX = (x: string | number): string => {
+    if (xFormat === "months_since") return `M${x}`;
+    if (xFormat === "multiplier") return `${Number(x).toFixed(2).replace(/\.?0+$/, "")}×`;
+    return typeof x === "string" ? monthLabel(x) : String(x);
+  };
 
   const xs = useMemo(() => {
     const all = new Map<number, string | number>();
@@ -139,16 +144,11 @@ export function LineChart({
           stroke="var(--axis)"
         />
         {xs.map(([t, raw], i) =>
-          i % labelEvery === 0 || i === xs.length - 1 ? (
+          i % labelEvery === 0 || (i === xs.length - 1 && i % labelEvery >= labelEvery / 2) ? (
             <text key={t} x={x(t)} y={height - 8} textAnchor="middle">
               {fmtX(raw)}
             </text>
           ) : null,
-        )}
-        {xAxisTitle && (
-          <text x={M.left + innerW} y={height - 8} textAnchor="end" className="sr-only">
-            {xAxisTitle}
-          </text>
         )}
         {reference && (
           <g>

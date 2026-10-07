@@ -42,6 +42,7 @@ export function KpiTile({
   change,
   format,
   upIsGood,
+  neutral = false,
   hero = false,
 }: {
   label: string;
@@ -50,10 +51,12 @@ export function KpiTile({
   change: number | null;
   format: MetricFormat;
   upIsGood: boolean;
+  /** Direction is neither good nor bad (e.g. spend): no colour, sign only. */
+  neutral?: boolean;
   hero?: boolean;
 }) {
   const direction = change === null || Math.abs(change) < 0.005 ? "flat" : change > 0 ? "up" : "down";
-  const good = direction === "flat" ? null : (direction === "up") === upIsGood;
+  const good = direction === "flat" || neutral ? null : (direction === "up") === upIsGood;
   return (
     <div className={`card ${hero ? "kpi-hero" : ""}`}>
       <span className="kpi-label">

@@ -29,6 +29,22 @@ def _env_float(name: str, default: float) -> float:
     return float(raw) if raw else default
 
 
+def load_env_file(path: Path | None = None) -> None:
+    """Load KEY=VALUE lines from `.env` without overriding variables already set."""
+    path = path or REPO_ROOT / ".env"
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def resolve_path(raw: str) -> Path:
     """Resolve a path relative to the repo root (env values are usually relative)."""
     path = Path(raw).expanduser()
@@ -71,4 +87,5 @@ class Settings:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    load_env_file()
     return Settings.from_env()

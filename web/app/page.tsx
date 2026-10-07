@@ -103,7 +103,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         <KpiTile label="LTV:CAC" metric={k.ltv_cac!.metric} value={k.ltv_cac!.value} change={k.ltv_cac!.change_pct} format="ratio" upIsGood />
         <KpiTile label="CAC payback" metric={k.payback_months!.metric} value={k.payback_months!.value} change={k.payback_months!.change_pct} format="months" upIsGood={false} />
         <KpiTile label="New customers" metric="new_customers" value={k.new_customers!.value} change={k.new_customers!.change_pct} format="number" upIsGood />
-        <KpiTile label={data.fully_loaded ? "Fully loaded spend" : "Paid spend"} metric={k.spend!.metric} value={k.spend!.value} change={k.spend!.change_pct} format="currency" upIsGood={false} />
+        <KpiTile label={data.fully_loaded ? "Fully loaded spend" : "Paid spend"} metric={k.spend!.metric} value={k.spend!.value} change={k.spend!.change_pct} format="currency" upIsGood={false} neutral />
       </section>
 
       <section className="card" style={{ marginBottom: 16 }}>

@@ -123,7 +123,7 @@ export default async function CohortsPage({ searchParams }: { searchParams: Prom
           series={series}
           yFormat="percent"
           xType="number"
-          xLabel={(x) => `M${x}`}
+          xFormat="months_since"
           xAxisTitle="Months since acquisition"
           reference={{ y: 1, label: "CAC recovered" }}
         />

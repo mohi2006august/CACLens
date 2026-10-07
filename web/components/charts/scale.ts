@@ -8,7 +8,11 @@ export function niceTicks(min: number, max: number, count = 4): number[] {
   const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
   const start = Math.floor(min / step) * step;
   const ticks: number[] = [];
-  for (let v = start; v <= max + step * 0.5; v += step) ticks.push(Number(v.toPrecision(12)));
+  // Always end on a tick at or above the max so marks never leave the plot.
+  for (let v = start; ticks.length < 50; v += step) {
+    ticks.push(Number(v.toPrecision(12)));
+    if (v >= max - step * 1e-9) break;
+  }
   return ticks;
 }
 

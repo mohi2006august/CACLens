@@ -48,3 +48,6 @@ data/.dlt/
 
 # Published serving snapshots
 data/serving/
+
+# Local editor/agent launch configs
+.claude/

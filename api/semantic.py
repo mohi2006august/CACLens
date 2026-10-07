@@ -453,8 +453,10 @@ class SemanticLayer:
             if query.grain:
                 select.append(f"cast(date_trunc('{query.grain}', {time_expr}) as date) as period")
             select.extend(query.dimensions)
+            # Always DOUBLE: DECIMAL sums would serialise as strings in the API.
             select.extend(
-                f"{self.measures[i.measure].agg}({self.measures[i.measure].expr}) as {aliases[i]}"
+                f"cast({self.measures[i.measure].agg}({self.measures[i.measure].expr}) as double)"
+                f" as {aliases[i]}"
                 for i in group
             )
             where: list[str] = []

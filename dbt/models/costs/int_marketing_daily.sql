@@ -93,13 +93,13 @@ select
     channel,
     campaign,
     segment,
-    sum(paid_spend) as paid_spend,
-    sum(people_cost) as people_cost,
-    sum(tool_cost) as tool_cost,
-    sum(impressions) as impressions,
-    sum(clicks) as clicks,
-    sum(leads) as leads,
-    sum(opportunities) as opportunities
+    cast(sum(paid_spend) as double) as paid_spend,
+    cast(sum(people_cost) as double) as people_cost,
+    cast(sum(tool_cost) as double) as tool_cost,
+    cast(sum(impressions) as double) as impressions,
+    cast(sum(clicks) as double) as clicks,
+    cast(sum(leads) as double) as leads,
+    cast(sum(opportunities) as double) as opportunities
 from (
     select * from segmented
     union all
