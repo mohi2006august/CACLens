@@ -194,6 +194,15 @@ metrics:
     description: Paid spend per lead.
     formula: "paid spend / leads"
 
+  cost_per_opportunity:
+    label: Cost per opportunity
+    type: ratio
+    numerator: paid_spend
+    denominator: opportunities
+    format: currency
+    description: Paid spend per CRM opportunity; moves weeks before CAC when lead quality changes.
+    formula: "paid spend / opportunities"
+
   # --- CAC (FR-03) -----------------------------------------------------------------
   cac:
     fully_loaded_variant: cac_fully_loaded

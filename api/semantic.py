@@ -405,7 +405,7 @@ class SemanticLayer:
 
     def compile(self, query: MetricQuery) -> CompiledQuery:
         metrics = [self.metric(name) for name in query.metrics]
-        for dim in query.dimensions:
+        for dim in (*query.dimensions, *(f.dimension for f in query.filters)):
             self._check_filter_dimension(dim)
         if query.start and query.end and query.start > query.end:
             raise SemanticError("start must be on or before end")

@@ -27,7 +27,7 @@ DIMENSION_VALUE_DIMS = ("channel", "campaign", "segment")
 
 
 class ExplainInput(BaseModel):
-    channel: str | None = None
+    channels: list[str] | None = None
     current_start: date
     current_end: date
     baseline_start: date
@@ -116,16 +116,17 @@ def tool_definitions(layer: SemanticLayer) -> list[dict[str, Any]]:
                 "Explain why CAC changed between a baseline and a current period by "
                 "decomposing it into CPC, click-to-lead CVR, lead-to-customer CVR (and, when "
                 "fully_loaded, people/tool overhead). Use for 'why' questions about CAC. "
-                "channel null means all paid channels together."
+                "channels null means all paid channels together; pass several channels "
+                "(e.g. meta_ads and linkedin_ads for paid social) to explain them combined."
             ),
             "strict": True,
             "input_schema": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["channel", "current_start", "current_end", "baseline_start",
+                "required": ["channels", "current_start", "current_end", "baseline_start",
                              "baseline_end", "fully_loaded", "attribution_model"],
                 "properties": {
-                    "channel": _nullable({"type": "string"}),
+                    "channels": _nullable({"type": "array", "items": {"type": "string"}}),
                     "current_start": {"type": "string", "format": "date"},
                     "current_end": {"type": "string", "format": "date"},
                     "baseline_start": {"type": "string", "format": "date"},
@@ -193,8 +194,8 @@ def run_explain(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection,
     try:
         args = ExplainInput(**raw)
         filters = [QueryFilter(dimension="is_paid_channel", op="eq", value=True)]
-        if args.channel:
-            filters = [QueryFilter(dimension="channel", op="eq", value=args.channel)]
+        if args.channels:
+            filters = [QueryFilter(dimension="channel", op="in", value=list(args.channels))]
         metrics = ["paid_spend", "fully_loaded_spend", "clicks", "leads", "new_customers"]
         funnels, sql = [], []
         for start, end in ((args.baseline_start, args.baseline_end),
@@ -206,7 +207,7 @@ def run_explain(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection,
             sql.append(result.sql)
     except (ValidationError, SemanticError, TypeError, ValueError) as exc:
         return ToolCall("explain_cac_change", raw, False, {"error": str(exc)})
-    subject = f"{args.channel} CAC" if args.channel else "Paid CAC"
+    subject = f"{' + '.join(args.channels)} CAC" if args.channels else "Paid CAC"
     dec = decompose(funnels[0], funnels[1], args.fully_loaded, subject=subject)
     output = {
         **dec.to_dict(),

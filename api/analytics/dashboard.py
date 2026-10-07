@@ -22,6 +22,7 @@ from api.analytics.decomposition import Funnel, decompose
 from api.semantic import MetricQuery, OrderBy, QueryFilter, SemanticLayer
 from api.warehouse import table_exists
 
+
 def _single(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection, metrics: list[str],
             start: date, end: date, attribution_model: str,
             filters: list[QueryFilter] | None = None) -> tuple[dict[str, Any], str]:
@@ -183,7 +184,8 @@ def attribution_compare(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection, s
                         end: date, metric: str) -> dict[str, Any]:
     result = layer.query(
         conn,
-        MetricQuery(metrics=[metric, "new_customers"], dimensions=["channel", "attribution_model"],
+        MetricQuery(metrics=list(dict.fromkeys([metric, "new_customers"])),
+                    dimensions=["channel", "attribution_model"],
                     start=start, end=end),
     )
     models = [r[0] for r in conn.execute(

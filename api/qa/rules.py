@@ -22,12 +22,12 @@ from api.semantic import SemanticLayer
 # Ordered: the first matching phrase wins, so specific phrases come first.
 METRIC_PATTERNS: list[tuple[str, str]] = [
     (r"ltv\s*(:|/|to)\s*cac|ltv-to-cac|ltv cac ratio", "ltv_cac"),
-    (r"payback", "payback_months"),
+    (r"payback|pays? back", "payback_months"),
     (r"\bltv\b|lifetime value", "ltv"),
     (r"unattributed|no source|without (a )?source", "unattributed_share"),
     (r"lagged cac|lagged", "cac_lagged"),
     (r"paid cac", "paid_cac"),
-    (r"\bcac\b|acquisition cost|cost (per|to acquire a?) ?(new )?customer", "cac"),
+    (r"\bcac\b|acquisition cost|cost (us )?(per|to acquire)( a| each)? ?(new )?customer", "cac"),
     (r"\bcpc\b|cost per click", "cpc"),
     (r"\bctr\b|click[- ]through", "ctr"),
     (r"cost per lead|\bcpl\b", "cost_per_lead"),
@@ -215,7 +215,7 @@ def plan_question(question: str, ctx: AskContext, layer: SemanticLayer) -> Plan:
 
     dims: list[str] = []
     if re.search(r"attribution models|by model|each model|across models|compare models|"
-                 r"different models|model comparison", q):
+                 r"different models|model comparison|(by|and) attribution model", q):
         dims.append("attribution_model")
     by_channel = re.search(
         r"(by|per|each|every|across|which|what) (marketing )?channels?|channel mix|"
@@ -249,14 +249,15 @@ def plan_question(question: str, ctx: AskContext, layer: SemanticLayer) -> Plan:
                 break
 
     grain = None
+    q_grain = re.sub(r"monthly (churn|recurring)", "", q)  # a metric name, not a grain
     if re.search(r"monthly|by month|per month|each month|month over month|month-over-month|"
-                 r"trend|over time", q):
+                 r"trend|over time", q_grain):
         grain = "month"
-    elif re.search(r"weekly|by week|per week|each week", q):
+    elif re.search(r"weekly|by week|per week|each week", q_grain):
         grain = "week"
-    elif re.search(r"quarterly|by quarter|per quarter|each quarter", q):
+    elif re.search(r"quarterly|by quarter|per quarter|each quarter", q_grain):
         grain = "quarter"
-    elif re.search(r"daily|by day|per day|each day", q):
+    elif re.search(r"daily|by day|per day|each day", q_grain):
         grain = "day"
     if grain in ("day", "week") and any(
         m in ("ltv", "ltv_cac", "payback_months", "monthly_churn", "arpa", "net_revenue")
@@ -276,7 +277,7 @@ def plan_question(question: str, ctx: AskContext, layer: SemanticLayer) -> Plan:
     intent = "lookup"
     is_cac = metrics[0].startswith(("cac", "paid_cac"))
     if is_cac and re.search(r"(grew|grow|increased|rose|jumped|spiked|worsened) (the )?most|"
-                            r"biggest (increase|jump|change)", q):
+                            r"biggest (\w+ )?(increase|jump|change|rise)", q):
         intent = "growth"
     elif is_cac and re.search(r"\bwhy\b|what drove|driver|explain|cause", q):
         intent = "explain"
@@ -284,6 +285,16 @@ def plan_question(question: str, ctx: AskContext, layer: SemanticLayer) -> Plan:
     return Plan(intent=intent, metrics=metrics, dimensions=dims, grain=grain, filters=filters,
                 period=period, attribution_model=model, order_desc=order_desc,
                 fully_loaded=fully_loaded)
+
+
+CHANNEL_LABELS = {
+    "google_search": "Google Search", "meta_ads": "Meta Ads", "linkedin_ads": "LinkedIn Ads",
+    "organic_search": "Organic Search", "referral": "Referral", "email": "Email",
+    "direct": "Direct", "other": "Other", "unattributed": "Unattributed",
+    "unallocated": "Unallocated costs",
+}
+SEGMENT_LABELS = {"smb": "SMB", "mid_market": "Mid-market", "enterprise": "Enterprise",
+                  "unknown": "Unknown segment"}
 
 
 def _label(layer: SemanticLayer, metric: str) -> str:
@@ -298,6 +309,38 @@ def _model_label(model: str) -> str:
     return model.replace("_", "-")
 
 
+def _value_label(dim: str, value: Any) -> str:
+    if dim == "channel":
+        return CHANNEL_LABELS.get(str(value), str(value))
+    if dim == "segment":
+        return SEGMENT_LABELS.get(str(value), str(value))
+    if dim == "attribution_model":
+        return _model_label(str(value))
+    if isinstance(value, date):
+        return f"{value:%b %Y}"
+    return str(value)
+
+
+def _channels(plan: Plan) -> list[str] | None:
+    for f in plan.filters:
+        if f["dimension"] == "channel":
+            values = f["value"] if isinstance(f["value"], list) else [f["value"]]
+            return [str(v) for v in values]
+    return None
+
+
+def _scope(plan: Plan) -> str:
+    """Human-readable filters, e.g. 'Meta Ads + LinkedIn Ads, SMB'."""
+    parts = []
+    for f in plan.filters:
+        values = f["value"] if isinstance(f["value"], list) else [f["value"]]
+        parts.append(" + ".join(_value_label(f["dimension"], v) for v in values))
+    return ", ".join(parts)
+
+
+COST_METRICS = ("cac", "paid_cac", "payback", "cost_per", "cpc", "ltv_cac")
+
+
 class RulePlanner:
     def __init__(self, layer: SemanticLayer) -> None:
         self.layer = layer
@@ -308,23 +351,24 @@ class RulePlanner:
         if plan.intent == "growth":
             answer.answer = self._growth(conn, plan, answer)
         elif plan.intent == "explain":
-            answer.answer = self._explain(conn, plan, answer, self._channel_filter(plan))
+            answer.answer = self._explain(conn, plan, answer, _channels(plan))
         else:
             answer.answer = self._lookup(conn, plan, answer)
         return finalize(self.layer, answer)
-
-    @staticmethod
-    def _channel_filter(plan: Plan) -> str | None:
-        for f in plan.filters:
-            if f["dimension"] == "channel" and f["op"] == "eq":
-                return str(f["value"])
-        return None
 
     def _call(self, conn: duckdb.DuckDBPyConnection, answer: Answer, name: str,
               raw: dict[str, Any]) -> ToolCall:
         call = execute_tool(self.layer, conn, name, raw)
         answer.calls.append(call)
         return call
+
+    def _where(self, plan: Plan) -> str:
+        assert plan.period is not None
+        scope = _scope(plan)
+        text = f"for {scope} in {plan.period.label}" if scope else f"for {plan.period.label}"
+        if "attribution_model" not in plan.dimensions:
+            text += f" ({_model_label(plan.attribution_model)} attribution)"
+        return text
 
     def _lookup(self, conn: duckdb.DuckDBPyConnection, plan: Plan, answer: Answer) -> str:
         assert plan.period is not None
@@ -333,7 +377,9 @@ class RulePlanner:
             return f"I couldn't run that query: {call.output.get('error')}"
         metric = plan.metrics[0]
         rows = [r for r in call.result.rows if r.get(metric) is not None]
-        where = f"for {plan.period.label} ({_model_label(plan.attribution_model)} attribution)"
+        if metric.startswith(COST_METRICS):  # $0 CAC/payback just means no spend
+            rows = [r for r in rows if r[metric]]
+        where = self._where(plan)
         label = _label(self.layer, metric)
         if not rows:
             return f"There is no {label} data {where}."
@@ -355,23 +401,25 @@ class RulePlanner:
         reverse = plan.order_desc if plan.order_desc is not None else True
         ranked = sorted(rows, key=lambda r: r[metric], reverse=reverse)
         parts = ", ".join(
-            f"{r[dim]} {_fmt(self.layer, metric, r[metric])}" for r in ranked[:5]
+            f"{_value_label(dim, r[dim])} {_fmt(self.layer, metric, r[metric])}"
+            for r in ranked[:6]
         )
-        lead = ranked[0]
+        dim_label = self.layer.dimensions[dim].label.lower()
         if plan.order_desc is not None:
             word = "highest" if reverse else "lowest"
+            lead = ranked[0]
             return (
-                f"{lead[dim]} has the {word} {label} {where} at "
-                f"{_fmt(self.layer, metric, lead[metric])}. By {dim}: {parts}."
+                f"{_value_label(dim, lead[dim])} has the {word} {label} {where} at "
+                f"{_fmt(self.layer, metric, lead[metric])}. By {dim_label}: {parts}."
             )
-        return f"{label} by {dim} {where}: {parts}."
+        return f"{label} by {dim_label} {where}: {parts}."
 
     def _explain(self, conn: duckdb.DuckDBPyConnection, plan: Plan, answer: Answer,
-                 channel: str | None) -> str:
+                 channels: list[str] | None) -> str:
         assert plan.period is not None
         base = baseline_for(plan.period)
         call = self._call(conn, answer, "explain_cac_change", {
-            "channel": channel,
+            "channels": channels,
             "current_start": plan.period.start.isoformat(),
             "current_end": plan.period.end.isoformat(),
             "baseline_start": base.start.isoformat(),
@@ -383,17 +431,20 @@ class RulePlanner:
             return f"I couldn't explain that change: {call.output.get('error')}"
         out = call.output
         if out.get("cac_change_pct") is None or not out.get("drivers"):
-            return out.get("summary", "Not enough data to explain the change.")
-        who = channel or "Paid"
+            return str(out.get("summary", "Not enough data to explain the change."))
+        who = " + ".join(_value_label("channel", c) for c in channels) if channels else "Paid"
+        kind = "fully loaded CAC" if plan.fully_loaded else "CAC"
         drivers = "; ".join(
-            f"{d['label']} {d['change_pct'] * 100:+.0f}% (CAC effect {d['cac_effect_pct'] * 100:+.0f}%)"
+            f"{d['label']} {d['change_pct'] * 100:+.0f}% "
+            f"(moves CAC {d['cac_effect_pct'] * 100:+.0f}%)"
             for d in out["drivers"]
         )
+        direction = "rose" if out["cac_change_pct"] >= 0 else "fell"
         return (
-            f"{who} CAC moved {out['cac_change_pct'] * 100:+.0f}% in {plan.period.label} vs "
-            f"{base.label}: ${out['cac_current']:,.0f} vs ${out['cac_baseline']:,.0f} "
-            f"({_model_label(plan.attribution_model)} attribution). "
-            f"Drivers: {drivers}. The biggest factor was {out['drivers'][0]['label']}."
+            f"{who} {kind} {direction} {abs(out['cac_change_pct']) * 100:.0f}% in "
+            f"{plan.period.label} vs {base.label} (${out['cac_current']:,.0f} vs "
+            f"${out['cac_baseline']:,.0f}, {_model_label(plan.attribution_model)} attribution). "
+            f"The main driver was {out['drivers'][0]['label']}. Breakdown: {drivers}."
         )
 
     def _growth(self, conn: duckdb.DuckDBPyConnection, plan: Plan, answer: Answer) -> str:
@@ -405,6 +456,7 @@ class RulePlanner:
             call = self._call(conn, answer, "query_metric", {
                 **plan.query_input(),
                 "dimensions": ["channel"],
+                "grain": None,
                 "start": period.start.isoformat(),
                 "end": period.end.isoformat(),
                 "filters": [{"dimension": "is_paid_channel", "op": "eq", "value": True}],
@@ -415,15 +467,20 @@ class RulePlanner:
             for r in call.result.rows:
                 rows.setdefault(r["channel"], {})[key] = r[metric]
         changes = {
-            c: v["current"] / v["baseline"] - 1
+            c: (v["current"] or 0) / (v["baseline"] or 1) - 1
             for c, v in rows.items()
             if v.get("current") and v.get("baseline")
         }
         if not changes:
             return "Not enough paid-channel data to compare the two periods."
         top = max(changes, key=lambda c: changes[c])
-        explanation = self._explain(conn, plan, answer, top)
+        others = ", ".join(
+            f"{_value_label('channel', c)} {changes[c] * 100:+.0f}%"
+            for c in sorted(changes, key=lambda c: -changes[c]) if c != top
+        )
+        explanation = self._explain(conn, plan, answer, [top])
         return (
-            f"{top} had the largest {_label(self.layer, metric)} increase in "
-            f"{plan.period.label} vs {base.label} ({changes[top] * 100:+.0f}%). {explanation}"
+            f"{_value_label('channel', top)} had the largest {_label(self.layer, metric)} "
+            f"increase in {plan.period.label} vs {base.label} ({changes[top] * 100:+.0f}%; "
+            f"{others}). {explanation}"
         )

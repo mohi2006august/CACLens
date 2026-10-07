@@ -10,7 +10,7 @@ from typing import Any
 
 from pipelines.sources.http import make_session, request_json, utc_now
 
-TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 - public endpoint, not a secret
+TOKEN_URL = "https://oauth2.googleapis.com/token"
 SOURCE = "google_ads"
 
 GAQL = """

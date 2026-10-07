@@ -8,14 +8,18 @@ overhead = fully loaded spend / paid spend. Taking logs makes the change additiv
 
     ln(CAC1/CAC0) = ln(CPC1/CPC0) - ln(LCVR1/LCVR0) - ln(CCVR1/CCVR0) [+ ln(OH1/OH0)]
 
-so each factor's share of the CAC change is its log term over the total.
+so each factor's share of the CAC change is its log term over the total. The same
+identity decomposes cost per opportunity, with the lead-to-opportunity rate in place
+of customer CVR (an early signal: opportunities appear weeks before customers).
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
+
+Outcome = Literal["new_customers", "opportunities"]
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,11 @@ class Funnel:
     clicks: float
     leads: float
     new_customers: float
+    opportunities: float = 0.0
+
+    @classmethod
+    def zero(cls) -> Funnel:
+        return cls(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     @classmethod
     def from_row(cls, row: dict[str, Any] | None) -> Funnel:
@@ -35,6 +44,7 @@ class Funnel:
             clicks=float(row.get("clicks") or 0),
             leads=float(row.get("leads") or 0),
             new_customers=float(row.get("new_customers") or 0),
+            opportunities=float(row.get("opportunities") or 0),
         )
 
     def __add__(self, other: Funnel) -> Funnel:
@@ -44,33 +54,59 @@ class Funnel:
             self.clicks + other.clicks,
             self.leads + other.leads,
             self.new_customers + other.new_customers,
+            self.opportunities + other.opportunities,
         )
 
-    def cac(self, fully_loaded: bool = False) -> float | None:
-        spend = self.fully_loaded_spend if fully_loaded else self.paid_spend
-        return spend / self.new_customers if self.new_customers > 0 else None
+    def __sub__(self, other: Funnel) -> Funnel:
+        return Funnel(
+            self.paid_spend - other.paid_spend,
+            self.fully_loaded_spend - other.fully_loaded_spend,
+            self.clicks - other.clicks,
+            self.leads - other.leads,
+            self.new_customers - other.new_customers,
+            self.opportunities - other.opportunities,
+        )
 
-    def factors(self, fully_loaded: bool) -> dict[str, float] | None:
-        if min(self.paid_spend, self.clicks, self.leads, self.new_customers) <= 0:
+    def outcome(self, outcome: Outcome) -> float:
+        return self.new_customers if outcome == "new_customers" else self.opportunities
+
+    def spend(self, fully_loaded: bool) -> float:
+        return self.fully_loaded_spend if fully_loaded else self.paid_spend
+
+    def cost_per(self, outcome: Outcome = "new_customers", fully_loaded: bool = False
+                 ) -> float | None:
+        count = self.outcome(outcome)
+        return self.spend(fully_loaded) / count if count > 0 else None
+
+    def cac(self, fully_loaded: bool = False) -> float | None:
+        return self.cost_per("new_customers", fully_loaded)
+
+    def factors(self, fully_loaded: bool, outcome: Outcome = "new_customers"
+                ) -> dict[str, float] | None:
+        count = self.outcome(outcome)
+        if min(self.paid_spend, self.clicks, self.leads, count) <= 0:
             return None
         factors = {
             "cpc": self.paid_spend / self.clicks,
             "lead_cvr": self.leads / self.clicks,
-            "customer_cvr": self.new_customers / self.leads,
+            OUTCOME_FACTOR[outcome]: count / self.leads,
         }
         if fully_loaded:
             factors["overhead"] = self.fully_loaded_spend / self.paid_spend
         return factors
 
 
+OUTCOME_FACTOR = {"new_customers": "customer_cvr", "opportunities": "opportunity_rate"}
 FACTOR_LABELS = {
     "cpc": "CPC",
     "lead_cvr": "Click to lead CVR",
     "customer_cvr": "Lead to customer CVR",
+    "opportunity_rate": "Lead to opportunity rate",
     "overhead": "People and tool cost per $ of media",
 }
-# +1: CAC moves with the factor; -1: CAC moves against it.
-FACTOR_DIRECTION = {"cpc": 1, "lead_cvr": -1, "customer_cvr": -1, "overhead": 1}
+# +1: cost moves with the factor; -1: cost moves against it.
+FACTOR_DIRECTION = {"cpc": 1, "lead_cvr": -1, "customer_cvr": -1, "opportunity_rate": -1,
+                    "overhead": 1}
 
 
 @dataclass(frozen=True)
@@ -101,15 +137,21 @@ def _pct(value: float) -> str:
 
 
 def decompose(
-    baseline: Funnel, current: Funnel, fully_loaded: bool = False, subject: str = "CAC"
+    baseline: Funnel,
+    current: Funnel,
+    fully_loaded: bool = False,
+    subject: str = "CAC",
+    outcome: Outcome = "new_customers",
 ) -> Decomposition:
-    cac0, cac1 = baseline.cac(fully_loaded), current.cac(fully_loaded)
-    change = (cac1 / cac0 - 1) if cac0 and cac1 else None
-    f0, f1 = baseline.factors(fully_loaded), current.factors(fully_loaded)
-    if not f0 or not f1 or cac0 is None or cac1 is None:
-        return Decomposition(cac0, cac1, change, [], f"Not enough funnel data to decompose {subject}.")
+    cost0 = baseline.cost_per(outcome, fully_loaded)
+    cost1 = current.cost_per(outcome, fully_loaded)
+    change = (cost1 / cost0 - 1) if cost0 and cost1 else None
+    f0, f1 = baseline.factors(fully_loaded, outcome), current.factors(fully_loaded, outcome)
+    if not f0 or not f1 or cost0 is None or cost1 is None:
+        return Decomposition(cost0, cost1, change, [],
+                             f"Not enough funnel data to decompose {subject}.")
 
-    total_log = math.log(cac1 / cac0)
+    total_log = math.log(cost1 / cost0)
     drivers: list[Driver] = []
     for factor in f0:
         term = FACTOR_DIRECTION[factor] * math.log(f1[factor] / f0[factor])
@@ -129,8 +171,8 @@ def decompose(
 
     lead = drivers[0]
     summary = (
-        f"{subject} {_pct(change or 0)} ({cac1:,.0f} vs {cac0:,.0f}). "
+        f"{subject} {_pct(change or 0)} (${cost1:,.0f} vs ${cost0:,.0f}). "
         f"Main driver: {lead.label} {_pct(lead.change_pct)}, "
         f"which moved {subject} {_pct(lead.cac_effect_pct)} on its own."
     )
-    return Decomposition(cac0, cac1, change, drivers, summary)
+    return Decomposition(cost0, cost1, change, drivers, summary)

@@ -311,9 +311,10 @@ class _Generator:
             became_lead_at=created_at,
         )
 
-        if converts or rng.random() < 0.12:
+        # Sales accepts good leads more often, so opportunities track lead quality.
+        deal_created = created_at + timedelta(days=rng.uniform(1, 7))
+        if (converts or rng.random() < min(0.9, 3 * p_convert)) and deal_created.date() <= END:
             self.deal_seq += 1
-            deal_created = created_at + timedelta(days=rng.uniform(1, 7))
             closed_at = convert_at or deal_created + timedelta(days=rng.uniform(10, 60))
             self.data.add(
                 "crm_deals",
