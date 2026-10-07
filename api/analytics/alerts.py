@@ -6,8 +6,10 @@ the window before it. Two outcomes are watched:
 - `cost_per_qualified_lead` (3-day window vs the 28 days before): qualified leads are
   known at form fill, so a lead-quality or CPC regression shows the day it starts. This
   is the early warning that keeps alert lead time under 3 days.
-- `cac` (14 days vs 56): the metric itself, which confirms weeks later because
-  customers lag leads by the sales cycle.
+- `cac` (14 days vs 56, p < 0.001, 3 flagged days): a strict backstop for large,
+  sustained regressions that lead quality cannot show (e.g. a sales-side conversion
+  collapse). Customers lag leads by the sales cycle and are few per window, so at
+  small-channel volumes it rarely confirms in time; the early warning does the work.
 
 (Cost per opportunity was watched too, but it caught regressions ~10 days after the
 qualified-lead alert and caused most false alarms; see `uv run caclens alerts-backtest`
@@ -63,7 +65,8 @@ WATCHED = (
     WatchedMetric("cost_per_qualified_lead", "cost_per_qualified_lead",
                   "cost per qualified lead", "qualified_leads",
                   window_days=3, baseline_days=28, max_p_value=0.001),
-    WatchedMetric("cac", "cac_fully_loaded", "CAC", "new_customers", min_flagged_days=3),
+    WatchedMetric("cac", "cac_fully_loaded", "CAC", "new_customers", min_flagged_days=3,
+                  max_p_value=0.001),
 )
 
 

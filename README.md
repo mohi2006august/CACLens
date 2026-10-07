@@ -23,8 +23,8 @@ leads by the sales cycle), so the alerts also watch *cost per qualified lead*. L
 is known at form fill from the CRM lead score (or work email + company size), which lets
 the alert fire within days. `uv run caclens alerts-backtest` replays the detector over
 the whole demo history against the incident in `evals/alert_incidents.yml`: the Meta
-regression is caught **2 days** after it starts (1–2 days across four demo seeds; it was
-12 days with CAC and cost-per-opportunity alerts alone), with 0.2–0.6 false alarms per
+regression is caught **1 day** after it starts (1–2 days across four demo seeds; it was
+12 days with CAC and cost-per-opportunity alerts alone), with 0.2–0.4 false alarms per
 channel-year.
 
 To run it under the orchestrator instead: `uv run dagster dev`, then materialize the `daily_refresh` job (it is also scheduled daily at 06:00 UTC).
