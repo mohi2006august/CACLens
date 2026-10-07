@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from api.analytics.alerts import AlertConfig, detect_alerts, poisson_cdf
+from api.analytics.alerts import AlertConfig, detect_alerts, nb_cdf, poisson_cdf
 from api.analytics.cohorts import parse_cohort
 from api.analytics.decomposition import Funnel, decompose
 from api.analytics.optimiser import fit_curve
@@ -47,31 +47,47 @@ def test_poisson_cdf_matches_known_values() -> None:
     assert poisson_cdf(5.9, 20.0) < 0.001  # fractional credits are floored
 
 
+def test_negative_binomial_widens_poisson() -> None:
+    assert nb_cdf(4, 12.0, 1.0) == pytest.approx(poisson_cdf(4, 12.0))
+    # The same shortfall is less surprising in a noisier (over-dispersed) series.
+    assert nb_cdf(4, 12.0, 3.0) > 5 * poisson_cdf(4, 12.0)
+    total = sum(nb_cdf(k, 12.0, 3.0) - nb_cdf(k - 1, 12.0, 3.0) for k in range(1, 200))
+    assert total + nb_cdf(0, 12.0, 3.0) == pytest.approx(1.0, abs=1e-6)
+
+
 def _series(spike_from: date | None) -> list[dict[str, object]]:
+    """Daily Meta funnel where a share of leads are good fits; a spike lowers that share."""
     rng = random.Random(7)
     rows = []
     for day in daterange(date(2025, 1, 1), 450):
-        cvr = 0.1 if spike_from is None or day < spike_from else 0.03
-        leads = 40
-        rows.append(acq_row(day, "meta_ads", paid_spend=1000.0, clicks=800.0, leads=leads,
-                            opportunities=float(sum(rng.random() < 3 * cvr for _ in range(leads))),
-                            new_customers=float(sum(rng.random() < cvr for _ in range(leads)))))
+        fit = 0.15 if spike_from is not None and day >= spike_from else 0.55
+        good = [rng.random() < fit for _ in range(40)]
+        qualified = sum(rng.random() < (0.93 if g else 0.16) for g in good)
+        customers = sum(rng.random() < (0.12 if g else 0.018) for g in good)
+        rows.append(acq_row(day, "meta_ads", paid_spend=1000.0, clicks=800.0, leads=40.0,
+                            qualified_leads=float(qualified), new_customers=float(customers)))
     return rows
 
 
-def test_alerts_fire_on_a_real_spike_and_stay_quiet_otherwise(layer: SemanticLayer) -> None:
+def test_alerts_fire_early_on_a_lead_quality_drop_and_stay_quiet_otherwise(
+    layer: SemanticLayer,
+) -> None:
     as_of = date(2026, 3, 26)
-    quiet = detect_alerts(layer, make_marts(_series(None)), as_of, AlertConfig())
-    assert quiet == []
+    assert detect_alerts(layer, make_marts(_series(None)), as_of, AlertConfig()) == []
 
     spike = date(2026, 3, 1)
     alerts = detect_alerts(layer, make_marts(_series(spike)), as_of, AlertConfig())
+    early = [a for a in alerts if a.metric == "cost_per_qualified_lead"]
     cac = [a for a in alerts if a.metric == "cac"]
-    assert len(cac) == 1
-    assert spike <= cac[0].first_detected_on <= date(2026, 3, 10)
+    assert len(early) == 1 and len(cac) == 1
+    # Lead time: qualified leads are known at form fill, so the warning is within 3 days.
+    assert (early[0].first_detected_on - spike).days < 3
+    assert early[0].drivers[0]["factor"] == "qualified_rate"
+    assert early[0].status == "open"
+    # CAC confirms later, once (fewer) customers arrive.
+    assert cac[0].first_detected_on > early[0].first_detected_on
     assert cac[0].severity == "critical"
     assert cac[0].drivers[0]["factor"] == "customer_cvr"
-    assert cac[0].status == "open"
 
 
 def test_fit_curve_recovers_elasticity_and_shrinks_thin_data() -> None:

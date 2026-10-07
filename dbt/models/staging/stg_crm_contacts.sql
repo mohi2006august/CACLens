@@ -14,6 +14,12 @@ select
         else nullif(lower(trim(d.company_domain)), '')
     end as company_domain,
     {{ normalize_segment('d.segment') }} as segment,
+    cast(d.lead_score as double) as lead_score,
+    coalesce(
+        d.email_domain is not null
+        and lower(d.email_domain) not in (select domain from {{ ref('free_email_domains') }}),
+        false
+    ) as is_work_email,
     d.lifecycle_stage,
     cast(d.created_at as timestamp) as created_at,
     cast(coalesce(d.became_lead_at, d.created_at) as timestamp) as lead_at

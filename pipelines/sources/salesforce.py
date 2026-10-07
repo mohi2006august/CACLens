@@ -42,8 +42,11 @@ LEAD_SOURCE_MAP: dict[str, tuple[str, str]] = {
     "other": ("other", "other"),
 }
 
+# Lead.Rating (Hot/Warm/Cold) stands in for a numeric lead score.
+RATING_SCORES = {"hot": 85.0, "warm": 60.0, "cold": 25.0}
+
 LEADS_SOQL = (
-    "SELECT Id, Email, Website, NumberOfEmployees, Status, LeadSource, CreatedDate "
+    "SELECT Id, Email, Website, NumberOfEmployees, Status, LeadSource, Rating, CreatedDate "
     "FROM Lead WHERE IsConverted = false AND SystemModstamp >= {since}"
 )
 CONTACTS_SOQL = (
@@ -106,6 +109,7 @@ def normalize_person(record: dict[str, Any], kind: str, loaded_at: datetime) -> 
         "company_domain": normalize_domain(website)
         or (domain if domain and domain not in FREE_EMAIL_DOMAINS else None),
         "segment": normalize_segment(employees),
+        "lead_score": RATING_SCORES.get(str(record.get("Rating") or "").lower()),
         "lifecycle_stage": kind,
         "created_at": created_at,
         "became_lead_at": created_at,

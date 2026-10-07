@@ -38,10 +38,11 @@ def alert_config(settings: Settings) -> AlertConfig:
     )
 
 
-def load_raw(settings: Settings, demo: bool | None = None, scale: float = 1.0) -> dict[str, object]:
+def load_raw(settings: Settings, demo: bool | None = None, scale: float = 1.0,
+             seed: int = 42) -> dict[str, object]:
     use_demo = settings.demo if demo is None else demo
     if use_demo:
-        return {"demo": load_demo(settings.warehouse_path, scale=scale)}
+        return {"demo": load_demo(settings.warehouse_path, scale=scale, seed=seed)}
     return dict(load_sources(settings.warehouse_path))
 
 
@@ -72,10 +73,10 @@ def publish(settings: Settings) -> Path:
     return publish_snapshot(settings.warehouse_path, settings.serving_dir)
 
 
-def refresh(demo: bool | None = None, scale: float = 1.0,
+def refresh(demo: bool | None = None, scale: float = 1.0, seed: int = 42,
             settings: Settings | None = None) -> dict[str, object]:
     settings = settings or get_settings()
-    loaded = load_raw(settings, demo, scale)
+    loaded = load_raw(settings, demo, scale, seed)
     run_dbt(settings)
     n_alerts = compute_alerts(settings)
     snapshot = publish(settings)

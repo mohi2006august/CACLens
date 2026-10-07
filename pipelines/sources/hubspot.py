@@ -44,19 +44,25 @@ SOURCE_MAP: dict[str, tuple[str | None, str]] = {
 class HubSpotConfig:
     token: str
     segment_property: str
+    lead_score_property: str = "hubspotscore"
 
     @classmethod
     def from_env(cls) -> HubSpotConfig | None:
         token = os.environ.get("HUBSPOT_TOKEN")
         if not token:
             return None
-        return cls(token, os.environ.get("HUBSPOT_SEGMENT_PROPERTY", "company_size"))
+        return cls(
+            token,
+            os.environ.get("HUBSPOT_SEGMENT_PROPERTY", "company_size"),
+            os.environ.get("HUBSPOT_LEAD_SCORE_PROPERTY", "hubspotscore"),
+        )
 
     def contact_properties(self) -> list[str]:
         return [
             "email", "createdate", "lastmodifieddate", "lifecyclestage",
             "hs_lifecyclestage_lead_date", "website", "hs_email_domain",
             self.segment_property,
+            self.lead_score_property,
             "hs_analytics_source", "hs_analytics_source_data_1", "hs_analytics_source_data_2",
             "hs_analytics_first_timestamp",
             "hs_latest_source", "hs_latest_source_data_1", "hs_latest_source_data_2",
@@ -83,8 +89,18 @@ def map_source(kind: str | None, data_1: str | None) -> tuple[str, str]:
     return source, medium
 
 
+def parse_score(value: Any) -> float | None:
+    try:
+        return float(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 def normalize_contact(
-    record: dict[str, Any], segment_property: str, loaded_at: datetime
+    record: dict[str, Any],
+    segment_property: str,
+    loaded_at: datetime,
+    lead_score_property: str = "hubspotscore",
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     props = record.get("properties", {})
     contact_id = str(record["id"])
@@ -101,6 +117,7 @@ def normalize_contact(
         "email_domain": domain,
         "company_domain": company_domain,
         "segment": normalize_segment(props.get(segment_property)),
+        "lead_score": parse_score(props.get(lead_score_property)),
         "lifecycle_stage": props.get("lifecyclestage"),
         "created_at": created_at,
         "became_lead_at": parse_ts(props.get("hs_lifecyclestage_lead_date")) or created_at,
@@ -204,7 +221,8 @@ def fetch_contacts(
                     parse_ts(record.get("properties", {}).get("lastmodifieddate"))
                     or last_modified
                 )
-                yield normalize_contact(record, config.segment_property, loaded_at)
+                yield normalize_contact(record, config.segment_property, loaded_at,
+                                        config.lead_score_property)
             after = page.get("paging", {}).get("next", {}).get("after")
             if not after:
                 return

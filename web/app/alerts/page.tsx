@@ -3,19 +3,13 @@ import Link from "next/link";
 
 import { DriversChart } from "@/components/charts/DriversChart";
 import { Term } from "@/components/Term";
-import { ErrorState, PageHead, SeverityBadge } from "@/components/ui";
+import { alertMetric, ErrorState, PageHead, SeverityBadge } from "@/components/ui";
 import { api, type Alert } from "@/lib/api";
 import { channelLabel } from "@/lib/channels";
 import { currency, dayLabel, number, signedPct } from "@/lib/format";
 import { param, type SearchParams } from "@/lib/range";
 
 export const metadata: Metadata = { title: "Alerts" };
-
-function metricLabel(metric: string) {
-  if (metric.startsWith("cost_per_opportunity")) return { label: "Cost per opportunity", term: "cost_per_opportunity", unit: "opportunities" };
-  if (metric === "cac_fully_loaded") return { label: "Fully loaded CAC", term: "cac_fully_loaded", unit: "customers" };
-  return { label: "CAC", term: "cac", unit: "customers" };
-}
 
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
@@ -42,7 +36,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
     <>
       <PageHead
         title="Alerts"
-        subtitle="Daily check: trailing 14-day cost vs the 56 days before, flagged only when the rise is statistically significant (Poisson p < 0.01). Cost per opportunity is the early warning; CAC confirms."
+        subtitle="Checked daily per paid channel. Cost per qualified lead (3 days vs the prior 28) is the early warning: lead quality is known at form fill, so regressions surface within days. CAC (14 days vs 56) confirms once customers arrive. Only statistically significant rises alert."
       />
       <nav className="controls" aria-label="Filter alerts">
         <span className="segmented">
@@ -69,7 +63,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
 
       <div className="stack">
         {alerts.map((a) => {
-          const m = metricLabel(a.metric);
+          const m = alertMetric(a.metric);
           return (
             <article key={a.id} className="card" aria-labelledby={`alert-${a.id}`}>
               <div className="card-head">
@@ -123,7 +117,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
                 <DriversChart
                   drivers={a.drivers}
                   title={`Drivers of the ${channelLabel(a.channel)} ${m.label} change`}
-                  subject={m.term === "cost_per_opportunity" ? "cost" : "CAC"}
+                  subject={m.early ? "cost" : "CAC"}
                 />
               </div>
             </article>

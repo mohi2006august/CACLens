@@ -9,7 +9,8 @@ with ad as (
         0.0 as people_cost,
         0.0 as tool_cost,
         impressions,
-        clicks
+        clicks,
+        0.0 as qualified_leads
     from {{ ref('stg_ad_spend') }}
 ),
 
@@ -35,7 +36,8 @@ allocated as (
         sum(case when a.cost_type = 'tools' then a.allocated_cost else 0 end) / d.days_in_month
             as tool_cost,
         0 as impressions,
-        0 as clicks
+        0 as clicks,
+        0.0 as qualified_leads
     from {{ ref('int_cost_allocation_monthly') }} as a
     inner join month_days as d on d.month = a.month
     group by d.date_day, a.channel, d.days_in_month
@@ -59,6 +61,7 @@ segmented as (
         u.impressions * coalesce(s.segment_share, 1) as impressions,
         u.clicks * coalesce(s.segment_share, 1) as clicks,
         0.0 as leads,
+        0.0 as qualified_leads,
         0.0 as opportunities
     from unsegmented as u
     left join {{ ref('int_segment_shares') }} as s
@@ -72,6 +75,7 @@ leads as (
         0.0 as paid_spend, 0.0 as people_cost, 0.0 as tool_cost,
         0.0 as impressions, 0.0 as clicks,
         count(*) * 1.0 as leads,
+        sum(case when is_qualified then 1.0 else 0.0 end) as qualified_leads,
         0.0 as opportunities
     from {{ ref('int_leads') }}
     group by all
@@ -83,6 +87,7 @@ opportunities as (
         0.0 as paid_spend, 0.0 as people_cost, 0.0 as tool_cost,
         0.0 as impressions, 0.0 as clicks,
         0.0 as leads,
+        0.0 as qualified_leads,
         count(*) * 1.0 as opportunities
     from {{ ref('int_opportunities') }}
     group by all
@@ -99,6 +104,7 @@ select
     cast(sum(impressions) as double) as impressions,
     cast(sum(clicks) as double) as clicks,
     cast(sum(leads) as double) as leads,
+    cast(sum(qualified_leads) as double) as qualified_leads,
     cast(sum(opportunities) as double) as opportunities
 from (
     select * from segmented

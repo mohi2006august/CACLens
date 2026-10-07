@@ -15,7 +15,7 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     from pipelines.refresh import DbtBuildFailed, refresh
 
     try:
-        summary = refresh(demo=args.demo, scale=args.scale)
+        summary = refresh(demo=args.demo, scale=args.scale, seed=args.seed)
     except DbtBuildFailed as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -42,6 +42,18 @@ def _cmd_alerts(_args: argparse.Namespace) -> int:
     print(f"{compute_alerts(settings)} alert episodes saved")
     print(f"published {publish(settings).name}")
     return 0
+
+
+def _cmd_alerts_backtest(args: argparse.Namespace) -> int:
+    from api.analytics.alert_backtest import backtest, format_report
+    from api.analytics.common import semantic_layer
+    from api.warehouse import connect
+    from pipelines.refresh import alert_config
+
+    with connect() as conn:
+        result = backtest(semantic_layer(), conn, alert_config(get_settings()))
+    print(json.dumps(result.to_dict(), indent=2) if args.json else format_report(result))
+    return 0 if result.passed or not args.strict else 1
 
 
 def _cmd_ask(args: argparse.Namespace) -> int:
@@ -76,6 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--demo", action=argparse.BooleanOptionalAction, default=None,
                    help="use the synthetic dataset (default: CACLENS_DEMO)")
     p.add_argument("--scale", type=float, default=1.0, help="demo data volume multiplier")
+    p.add_argument("--seed", type=int, default=42, help="demo data random seed")
     p.set_defaults(func=_cmd_refresh)
 
     p = sub.add_parser("load", help="load raw data only")
@@ -86,6 +99,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("alerts", help="recompute CAC alerts and republish")
     p.set_defaults(func=_cmd_alerts)
+
+    p = sub.add_parser("alerts-backtest",
+                       help="score alert lead time and false alarms (evals/alert_incidents.yml)")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--strict", action="store_true", help="exit 1 when the targets are missed")
+    p.set_defaults(func=_cmd_alerts_backtest)
 
     p = sub.add_parser("ask", help="ask a question in plain English")
     p.add_argument("question", nargs="+")

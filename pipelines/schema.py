@@ -81,13 +81,14 @@ RAW_TABLES: dict[str, RawTable] = {
                 "email_domain": "VARCHAR",
                 "company_domain": "VARCHAR",
                 "segment": "VARCHAR",
+                "lead_score": "DOUBLE",
                 "lifecycle_stage": "VARCHAR",
                 "created_at": "TIMESTAMP",
                 "became_lead_at": "TIMESTAMP",
                 "loaded_at": "TIMESTAMP",
             },
             ("source_system", "contact_id"),
-            "CRM contacts/leads with hashed email and company domain.",
+            "CRM contacts/leads with hashed email, company domain and lead score.",
         ),
         RawTable(
             "crm_touchpoints",
@@ -208,7 +209,14 @@ RAW_TABLES: dict[str, RawTable] = {
 
 
 def ensure_raw_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    """Create the raw schema and every contract table so dbt sources always resolve."""
+    """Create the raw schema and every contract table so dbt sources always resolve.
+
+    Columns added to the contract later are added to existing tables too.
+    """
     conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
     for table in RAW_TABLES.values():
         conn.execute(table.create_sql())
+        for column, typ in table.columns.items():
+            conn.execute(
+                f"ALTER TABLE {RAW_SCHEMA}.{table.name} ADD COLUMN IF NOT EXISTS {column} {typ}"
+            )

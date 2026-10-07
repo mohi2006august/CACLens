@@ -10,6 +10,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from api.config import get_settings
 from pipelines.load import run_source
 from pipelines.sources import SourceSpec, Window
 
@@ -97,12 +98,25 @@ def test_channel_detail_explains_the_march_meta_spike(client: TestClient) -> Non
     assert dec["drivers"][0]["factor"] == "customer_cvr"
 
 
-def test_alerts_catch_the_spike_early(client: TestClient) -> None:
+def test_alerts_catch_the_spike_within_three_days(built_warehouse: Path) -> None:
+    """PRD success metric: alert lead time < 3 days, without a flood of false alarms."""
+    from api.analytics.alert_backtest import backtest
+    from api.analytics.common import semantic_layer
+    from api.warehouse import connect
+    from pipelines.refresh import alert_config
+
+    with connect() as conn:
+        result = backtest(semantic_layer(), conn, alert_config(get_settings()))
+    incident = result.incidents[0]
+    assert incident.lead_time_days is not None and incident.lead_time_days < 3, incident
+    assert "cost_per_qualified_lead" in incident.first_by_metric
+    assert result.false_alarm_rate <= 1.0, result.to_dict()["false_alarms"]
+
+
+def test_alerts_endpoint_labels_the_early_warning(client: TestClient) -> None:
     alerts = client.get("/v1/alerts?channel=meta_ads").json()["alerts"]
     march = [a for a in alerts if "2026-02-20" <= a["first_detected_on"] <= "2026-04-15"]
-    assert march, alerts
-    leading = min(a["first_detected_on"] for a in march)
-    assert leading <= "2026-03-10"  # leading indicator fires within ~2 weeks of the change
+    assert {a["metric"] for a in march} >= {"cost_per_qualified_lead"}
 
 
 def test_payback_cohorts_and_optimiser(client: TestClient) -> None:

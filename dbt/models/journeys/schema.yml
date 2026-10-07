@@ -54,10 +54,12 @@ models:
                 expected: 1
 
   - name: int_leads
-    description: Leads attributed to the touch that created them.
+    description: Leads attributed to the touch that created them, with fit at form fill.
     columns:
       - name: contact_key
         data_tests: [unique, not_null]
+      - name: is_qualified
+        data_tests: [not_null]
 
   - name: int_opportunities
     columns:

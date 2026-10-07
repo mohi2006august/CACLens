@@ -4,8 +4,13 @@ It writes the same raw tables the real connectors load (see `pipelines/schema.py
 so dbt, the semantic layer and the app run end to end without any credentials.
 
 Built-in story for the demo: from 2026-02-20 to 2026-04-10 a new Meta lookalike
-audience brings in low-quality leads (lead -> customer CVR drops ~65%) and CPCs
-rise ~20%, so paid social CAC jumps in March 2026.
+audience brings in low-quality leads and CPCs rise ~20%, so paid social CAC jumps in
+March 2026.
+
+Lead quality is latent: each lead is a good or poor fit, poor fits convert far less, and
+the CRM only sees noisy proxies of fit at form fill (lead score, work vs personal email).
+The Meta incident lowers the share of good-fit leads, which is what an early-warning
+alert can see days before conversions move.
 """
 
 from __future__ import annotations
@@ -105,6 +110,17 @@ SEGMENT_PROFILES = {
     "mid_market": SegmentProfile(420, 100, 1.0, 0.035, 0.30, (10, 45)),
     "enterprise": SegmentProfile(1700, 380, 0.7, 0.016, 0.60, (30, 90)),
 }
+
+# Share of each source's leads that are a good fit (ICP); the rest convert far less.
+FIT_RATE = {
+    "Brand Search": 0.70, "Nonbrand Search": 0.60, "Competitor Search": 0.55,
+    "Prospecting Lookalike": 0.50, "Retargeting": 0.60, "Webinar Promo": 0.55,
+    "ABM Enterprise": 0.75, "Lead Gen Forms": 0.60,
+}
+CHANNEL_FIT_RATE = {"organic_search": 0.55, "referral": 0.75, "email": 0.60, "direct": 0.55}
+SPIKE_FIT_RATE = 0.15
+POOR_FIT_CVR = 0.15  # poor-fit leads convert at 15% of a good fit's rate
+FREE_MAIL = ("gmail.com", "yahoo.com", "outlook.com", "hotmail.com")
 
 CHANNEL_CHURN_MULT = {
     "google_search": 1.0,
@@ -270,8 +286,21 @@ class _Generator:
         segment = rng.choices(SEGMENTS, weights=mix)[0]
         profile = SEGMENT_PROFILES[segment]
         domain = self._company_domain()
-        email = f"person{self.contact_seq}@{domain}"
         created_at = _at(day, rng)
+
+        spike = channel == "meta_ads" and _in_meta_spike(day)
+        normal_fit = FIT_RATE.get(campaign or "", CHANNEL_FIT_RATE.get(channel, 0.6))
+        good_fit = rng.random() < (SPIKE_FIT_RATE if spike else normal_fit)
+        # Noisy proxies the CRM sees at form fill.
+        score = rng.gauss(68, 12) if good_fit else rng.gauss(36, 14)
+        lead_score = float(round(min(100.0, max(0.0, score))))
+        work_email = rng.random() < (0.92 if good_fit else 0.5)
+        if work_email:
+            email = f"person{self.contact_seq}@{domain}"
+            company_domain: str | None = domain
+        else:
+            email = f"person{self.contact_seq}@{rng.choice(FREE_MAIL)}"
+            company_domain = domain if rng.random() < 0.4 else None
 
         if rng.random() < 0.35:  # an earlier anonymous visit from the same source
             visit_at = created_at - timedelta(days=rng.uniform(0.5, 10))
@@ -279,8 +308,9 @@ class _Generator:
                 self._touch(contact_id, visit_at, source, medium, campaign, "visit")
         self._touch(contact_id, created_at, source, medium, campaign, "form_fill")
 
-        spike = channel == "meta_ads" and _in_meta_spike(day)
-        p_convert = customer_cvr * profile.cvr_mult * (0.35 if spike else 1.0)
+        # Calibrated so a source's normal mix converts at its customer_cvr.
+        good_fit_cvr = customer_cvr * profile.cvr_mult / (normal_fit + (1 - normal_fit) * POOR_FIT_CVR)
+        p_convert = good_fit_cvr * (1.0 if good_fit else POOR_FIT_CVR)
         converts = rng.random() < p_convert
         convert_at: datetime | None = None
         if converts:
@@ -303,9 +333,10 @@ class _Generator:
             source_system="hubspot",
             contact_id=contact_id,
             email_hash=hash_email(email),
-            email_domain=domain,
-            company_domain=domain,
+            email_domain=email_domain(email),
+            company_domain=company_domain,
             segment={"smb": "SMB", "mid_market": "Mid-Market", "enterprise": "Enterprise"}[segment],
+            lead_score=lead_score,
             lifecycle_stage="customer" if converts else "lead",
             created_at=created_at,
             became_lead_at=created_at,

@@ -9,8 +9,9 @@ overhead = fully loaded spend / paid spend. Taking logs makes the change additiv
     ln(CAC1/CAC0) = ln(CPC1/CPC0) - ln(LCVR1/LCVR0) - ln(CCVR1/CCVR0) [+ ln(OH1/OH0)]
 
 so each factor's share of the CAC change is its log term over the total. The same
-identity decomposes cost per opportunity, with the lead-to-opportunity rate in place
-of customer CVR (an early signal: opportunities appear weeks before customers).
+identity decomposes the early-warning costs, swapping the last factor: cost per
+qualified lead uses the lead qualification rate (known at form fill) and cost per
+opportunity the lead-to-opportunity rate (known within days).
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import math
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
-Outcome = Literal["new_customers", "opportunities"]
+Outcome = Literal["new_customers", "opportunities", "qualified_leads"]
 
 
 @dataclass(frozen=True)
@@ -30,10 +31,11 @@ class Funnel:
     leads: float
     new_customers: float
     opportunities: float = 0.0
+    qualified_leads: float = 0.0
 
     @classmethod
     def zero(cls) -> Funnel:
-        return cls(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return cls(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     @classmethod
     def from_row(cls, row: dict[str, Any] | None) -> Funnel:
@@ -45,6 +47,7 @@ class Funnel:
             leads=float(row.get("leads") or 0),
             new_customers=float(row.get("new_customers") or 0),
             opportunities=float(row.get("opportunities") or 0),
+            qualified_leads=float(row.get("qualified_leads") or 0),
         )
 
     def __add__(self, other: Funnel) -> Funnel:
@@ -55,6 +58,7 @@ class Funnel:
             self.leads + other.leads,
             self.new_customers + other.new_customers,
             self.opportunities + other.opportunities,
+            self.qualified_leads + other.qualified_leads,
         )
 
     def __sub__(self, other: Funnel) -> Funnel:
@@ -65,10 +69,12 @@ class Funnel:
             self.leads - other.leads,
             self.new_customers - other.new_customers,
             self.opportunities - other.opportunities,
+            self.qualified_leads - other.qualified_leads,
         )
 
     def outcome(self, outcome: Outcome) -> float:
-        return self.new_customers if outcome == "new_customers" else self.opportunities
+        value: float = getattr(self, outcome)
+        return value
 
     def spend(self, fully_loaded: bool) -> float:
         return self.fully_loaded_spend if fully_loaded else self.paid_spend
@@ -96,17 +102,19 @@ class Funnel:
         return factors
 
 
-OUTCOME_FACTOR = {"new_customers": "customer_cvr", "opportunities": "opportunity_rate"}
+OUTCOME_FACTOR = {"new_customers": "customer_cvr", "opportunities": "opportunity_rate",
+                  "qualified_leads": "qualified_rate"}
 FACTOR_LABELS = {
     "cpc": "CPC",
     "lead_cvr": "Click to lead CVR",
     "customer_cvr": "Lead to customer CVR",
     "opportunity_rate": "Lead to opportunity rate",
+    "qualified_rate": "Lead qualification rate",
     "overhead": "People and tool cost per $ of media",
 }
 # +1: cost moves with the factor; -1: cost moves against it.
 FACTOR_DIRECTION = {"cpc": 1, "lead_cvr": -1, "customer_cvr": -1, "opportunity_rate": -1,
-                    "overhead": 1}
+                    "qualified_rate": -1, "overhead": 1}
 
 
 @dataclass(frozen=True)

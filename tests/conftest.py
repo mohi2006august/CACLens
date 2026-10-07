@@ -16,7 +16,8 @@ ACQ_COLUMNS = {
     "segment": "VARCHAR", "is_paid_channel": "BOOLEAN", "attribution_model": "VARCHAR",
     "paid_spend": "DOUBLE", "people_cost": "DOUBLE", "tool_cost": "DOUBLE",
     "fully_loaded_spend": "DOUBLE", "impressions": "DOUBLE", "clicks": "DOUBLE",
-    "leads": "DOUBLE", "opportunities": "DOUBLE", "new_customers": "DOUBLE",
+    "leads": "DOUBLE", "qualified_leads": "DOUBLE", "opportunities": "DOUBLE",
+    "new_customers": "DOUBLE",
 }
 REV_COLUMNS = {
     "revenue_month": "DATE", "cohort_month": "DATE", "months_since_acquisition": "BIGINT",

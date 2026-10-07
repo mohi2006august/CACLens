@@ -80,8 +80,20 @@ export function SeverityBadge({ severity }: { severity: Alert["severity"] }) {
   );
 }
 
+export const ALERT_METRICS: Record<string, { label: string; term: string; unit: string; early: boolean }> = {
+  cost_per_qualified_lead: { label: "Cost per qualified lead", term: "cost_per_qualified_lead", unit: "qualified leads", early: true },
+  cost_per_opportunity: { label: "Cost per opportunity", term: "cost_per_opportunity", unit: "opportunities", early: true },
+  cac: { label: "CAC", term: "cac", unit: "customers", early: false },
+  cac_fully_loaded: { label: "Fully loaded CAC", term: "cac_fully_loaded", unit: "customers", early: false },
+};
+
+export function alertMetric(metric: string) {
+  return ALERT_METRICS[metric] ?? { label: metric, term: metric, unit: "outcomes", early: false };
+}
+
 export function AlertLine({ alert }: { alert: Alert }) {
-  const metric = alert.metric.startsWith("cost_per") ? "Cost per opportunity" : "CAC";
+  const m = alertMetric(alert.metric);
+  const metric = m.early ? `${m.label} (early warning)` : m.label;
   return (
     <span>
       <SeverityBadge severity={alert.severity} /> {channelLabel(alert.channel)} {metric}{" "}

@@ -25,6 +25,7 @@ semantic_models:
       impressions: {agg: sum, description: Ad impressions.}
       clicks: {agg: sum, description: Ad clicks to the site.}
       leads: {agg: sum, description: New leads, attributed to the touch that created them.}
+      qualified_leads: {agg: sum, description: Leads that were a good fit at form fill (lead score or work email + known segment).}
       opportunities: {agg: sum, description: CRM deals created.}
       new_customers: {agg: sum, description: New paying customers (attribution credit weighted).}
 
@@ -129,6 +130,13 @@ metrics:
     format: number
     description: New leads, credited to the touch that created them.
     formula: "count of new leads"
+  qualified_leads:
+    label: Qualified leads
+    type: simple
+    measure: qualified_leads
+    format: number
+    description: Leads that were a good fit at form fill (CRM lead score at or above the threshold, or work email and known company size).
+    formula: "count of leads qualified at form fill"
   opportunities:
     label: Opportunities
     type: simple
@@ -194,6 +202,22 @@ metrics:
     description: Paid spend per lead.
     formula: "paid spend / leads"
 
+  qualified_lead_rate:
+    label: Lead qualification rate
+    type: ratio
+    numerator: qualified_leads
+    denominator: leads
+    format: percent
+    description: Share of new leads that were a good fit at form fill; the earliest sign of a lead-quality change.
+    formula: "qualified leads / leads"
+  cost_per_qualified_lead:
+    label: Cost per qualified lead
+    type: ratio
+    numerator: paid_spend
+    denominator: qualified_leads
+    format: currency
+    description: Paid spend per qualified lead. Known the day leads arrive, so it warns of CAC regressions before conversions happen.
+    formula: "paid spend / qualified leads"
   cost_per_opportunity:
     label: Cost per opportunity
     type: ratio

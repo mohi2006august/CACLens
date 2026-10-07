@@ -113,7 +113,7 @@ class OrderBy(BaseModel):
 
 
 class MetricQuery(BaseModel):
-    metrics: list[str] = Field(min_length=1, max_length=16)
+    metrics: list[str] = Field(min_length=1, max_length=20)
     dimensions: list[str] = Field(default_factory=list, max_length=4)
     grain: Grain | None = None
     start: date | None = None

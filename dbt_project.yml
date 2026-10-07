@@ -20,6 +20,9 @@ vars:
   # FR-05: touchpoints older than this before purchase get no credit.
   attribution_lookback_days: 365
   time_decay_half_life_days: 7
+  # FR-06 early warning: a lead is qualified at form fill when its CRM lead score is at
+  # least this; leads without a score qualify on fit (work email + known segment).
+  qualified_lead_score: 50
   # PRD NFR: marts must reconcile to source totals within 2%.
   reconciliation_tolerance: 0.02
 

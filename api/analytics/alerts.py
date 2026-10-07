@@ -1,19 +1,25 @@
 """FR-06 CAC spike detection with driver decomposition.
 
-Every day, each paid channel's cost per outcome over a trailing window (default 14
-days) is compared with the window before it (default 56 days). Two outcomes are
-watched:
+Every day, each paid channel's cost per outcome over a trailing window is compared with
+the window before it. Two outcomes are watched:
 
-- `cac` (spend / new customers): the metric itself.
-- `cost_per_opportunity` (spend / opportunities): a leading indicator. Opportunities
-  are created days after a lead, while customers can take weeks, so lead-quality
-  problems surface here first.
+- `cost_per_qualified_lead` (3-day window vs the 28 days before): qualified leads are
+  known at form fill, so a lead-quality or CPC regression shows the day it starts. This
+  is the early warning that keeps alert lead time under 3 days.
+- `cac` (14 days vs 56): the metric itself, which confirms weeks later because
+  customers lag leads by the sales cycle.
 
-A day is flagged when the cost rose beyond the threshold *and* the drop in outcomes
-per dollar is statistically significant: under the baseline rate, seeing this few
-outcomes for the current spend must have a one-sided Poisson p-value below
-`max_p_value`. Consecutive flagged days form one alert episode, explained by the
-CPC x CVR decomposition at its peak.
+(Cost per opportunity was watched too, but it caught regressions ~10 days after the
+qualified-lead alert and caused most false alarms; see `uv run caclens alerts-backtest`
+and BRAIN.md.)
+
+A day is flagged when the cost rose beyond the threshold *and* the drop in outcomes per
+dollar is statistically significant. Outcomes are over-dispersed (budgets, weekdays and
+outcomes landing in a different week from their spend move them more than Poisson
+noise), so the test is negative binomial, with the dispersion measured on same-length
+windows over the prior half year. Consecutive flagged days form one episode, explained
+by the CPC x CVR decomposition at its peak; CAC must stay flagged for 3 days before it
+alerts. An alert stays open until the cost recovers against the baseline it fired on.
 """
 
 from __future__ import annotations
@@ -32,8 +38,10 @@ from api.semantic import MetricQuery, QueryFilter, SemanticLayer
 
 log = get_logger(__name__)
 
-FUNNEL_METRICS = ["paid_spend", "fully_loaded_spend", "clicks", "leads", "opportunities",
-                  "new_customers"]
+FUNNEL_METRICS = ["paid_spend", "fully_loaded_spend", "clicks", "leads", "qualified_leads",
+                  "opportunities", "new_customers"]
+MAX_DISPERSION = 10.0
+DISPERSION_LOOKBACK_DAYS = 182
 
 
 @dataclass(frozen=True)
@@ -42,15 +50,20 @@ class WatchedMetric:
     fully_loaded_name: str
     label: str
     outcome: Outcome
-    # Recent days whose outcomes are not final yet (deals are created up to a week
-    # after the lead), so evaluating them would flag a spike that is only censoring.
-    maturity_days: int = 0
+    # An episode must reach this many flagged days before it alerts. Slow metrics ask for
+    # persistence: a daily scan of overlapping windows crosses any p-value now and then.
+    min_flagged_days: int = 1
+    # Overrides of the config defaults for this metric (None = use the config).
+    window_days: int | None = None
+    baseline_days: int | None = None
+    max_p_value: float | None = None
 
 
 WATCHED = (
-    WatchedMetric("cac", "cac_fully_loaded", "CAC", "new_customers"),
-    WatchedMetric("cost_per_opportunity", "cost_per_opportunity", "cost per opportunity",
-                  "opportunities", maturity_days=7),
+    WatchedMetric("cost_per_qualified_lead", "cost_per_qualified_lead",
+                  "cost per qualified lead", "qualified_leads",
+                  window_days=3, baseline_days=28, max_p_value=0.001),
+    WatchedMetric("cac", "cac_fully_loaded", "CAC", "new_customers", min_flagged_days=3),
 )
 
 
@@ -131,6 +144,55 @@ def poisson_cdf(observed: float, expected: float) -> float:
     return min(1.0, total)
 
 
+def nb_cdf(observed: float, expected: float, dispersion: float) -> float:
+    """P(X <= observed) for a negative binomial with this mean and variance mean x dispersion.
+
+    Dispersion 1 is Poisson; larger values widen the distribution, so the same drop is
+    less surprising when the series is naturally noisy.
+    """
+    if dispersion <= 1.0001:
+        return poisson_cdf(observed, expected)
+    if expected <= 0:
+        return 1.0
+    r = expected / (dispersion - 1)  # NB "size"
+    p = 1 / dispersion  # success probability
+    k = math.floor(observed)
+    term = math.exp(r * math.log(p))  # P(X = 0)
+    total = term
+    for i in range(1, k + 1):
+        term *= (i - 1 + r) / i * (1 - p)
+        total += term
+    return min(1.0, total)
+
+
+def dispersion(s: _Series, outcome: Outcome, window: int, last: date, fully_loaded: bool,
+               lookback_days: int = DISPERSION_LOOKBACK_DAYS) -> float:
+    """Pearson dispersion of rolling `window`-day outcome totals around spend x rate (>= 1).
+
+    Measured on windows of the same length as the test (not single days) over the prior
+    half year, so it captures what makes window totals noisy: weekday mix, budget changes
+    and outcomes that land in a different week from the spend that bought them.
+    """
+    first = max(s.start, last - timedelta(days=lookback_days - 1))
+    total = s.window(first, last)
+    spend, count = total.spend(fully_loaded), total.outcome(outcome)
+    if spend <= 0 or count <= 0:
+        return 1.0
+    rate = count / spend
+    chi2, n = 0.0, 0
+    end = first + timedelta(days=window - 1)
+    while end <= last:
+        w = s.window(end - timedelta(days=window - 1), end)
+        expected = w.spend(fully_loaded) * rate
+        if expected > 0:
+            chi2 += (w.outcome(outcome) - expected) ** 2 / expected
+            n += 1
+        end += timedelta(days=1)
+    if n < 2:
+        return 1.0
+    return min(MAX_DISPERSION, max(1.0, chi2 / n))
+
+
 def _load_series(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection, start: date,
                  end: date, cfg: AlertConfig) -> dict[str, _Series]:
     result = layer.query(
@@ -159,30 +221,51 @@ def _load_series(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection, start: d
 Flag = tuple[date, float, float, Funnel, Funnel]
 
 
+def _windows(watched: WatchedMetric, cfg: AlertConfig) -> tuple[int, int, float]:
+    return (watched.window_days or cfg.window_days,
+            watched.baseline_days or cfg.baseline_days,
+            watched.max_p_value if watched.max_p_value is not None else cfg.max_p_value)
+
+
 def _scan(s: _Series, watched: WatchedMetric, first_eval: date, as_of: date,
           cfg: AlertConfig) -> list[Flag]:
+    window, baseline, max_p = _windows(watched, cfg)
     flagged: list[Flag] = []
     day = first_eval
-    last_eval = as_of - timedelta(days=watched.maturity_days)
-    while day <= last_eval:
-        cur_first = day - timedelta(days=cfg.window_days - 1)
+    while day <= as_of:
+        cur_first = day - timedelta(days=window - 1)
         base_last = cur_first - timedelta(days=1)
-        base_first = base_last - timedelta(days=cfg.baseline_days - 1)
+        base_first = base_last - timedelta(days=baseline - 1)
         cur, base = s.window(cur_first, day), s.window(base_first, base_last)
         n_cur, n_base = cur.outcome(watched.outcome), base.outcome(watched.outcome)
         # Compare counts on a per-day basis so window lengths can differ.
         enough = (n_cur >= cfg.min_customers
-                  and n_base * cfg.window_days / cfg.baseline_days >= cfg.min_customers)
+                  and n_base * window / baseline >= cfg.min_customers)
         cost_cur = cur.cost_per(watched.outcome, cfg.fully_loaded)
         cost_base = base.cost_per(watched.outcome, cfg.fully_loaded)
         if enough and cost_cur and cost_base:
             change = cost_cur / cost_base - 1
             if change >= cfg.threshold_pct:
-                p_value = poisson_cdf(n_cur, cur.spend(cfg.fully_loaded) / cost_base)
-                if p_value < cfg.max_p_value:
+                phi = dispersion(s, watched.outcome, window, base_last, cfg.fully_loaded)
+                p_value = nb_cdf(n_cur, cur.spend(cfg.fully_loaded) / cost_base, phi)
+                if p_value < max_p:
                     flagged.append((day, change, p_value, cur, base))
         day += timedelta(days=1)
     return flagged
+
+
+def _still_elevated(s: _Series, watched: WatchedMetric, reference: Funnel, as_of: date,
+                    cfg: AlertConfig) -> bool:
+    """Open until the cost recovers against the baseline from when the alert fired.
+
+    A short trailing baseline absorbs a lasting regression within weeks, so "no longer
+    flagged" must not be read as "fixed".
+    """
+    window = _windows(watched, cfg)[0]
+    now = s.window(as_of - timedelta(days=window - 1), as_of).cost_per(
+        watched.outcome, cfg.fully_loaded)
+    before = reference.cost_per(watched.outcome, cfg.fully_loaded)
+    return bool(now and before and now >= before * (1 + cfg.threshold_pct))
 
 
 def _episodes(flagged: list[Flag], gap: int) -> list[list[Flag]]:
@@ -198,33 +281,39 @@ def _episodes(flagged: list[Flag], gap: int) -> list[list[Flag]]:
 def detect_alerts(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection, as_of: date,
                   cfg: AlertConfig) -> list[Alert]:
     first_eval = as_of - timedelta(days=cfg.lookback_days)
-    start = first_eval - timedelta(days=cfg.window_days + cfg.baseline_days)
+    span = max(sum(_windows(w, cfg)[:2]) for w in WATCHED)
+    start = first_eval - timedelta(days=span)
     series = _load_series(layer, conn, start, as_of, cfg)
     alerts: list[Alert] = []
     for channel, s in sorted(series.items()):
         label = channel.replace("_", " ").title()
         for watched in WATCHED:
             metric = watched.fully_loaded_name if cfg.fully_loaded else watched.name
-            last_eval = as_of - timedelta(days=watched.maturity_days)
-            for episode in _episodes(_scan(s, watched, first_eval, as_of, cfg),
-                                     cfg.merge_gap_days):
+            episodes = [e for e in _episodes(_scan(s, watched, first_eval, as_of, cfg),
+                                             cfg.merge_gap_days)
+                        if len(e) >= watched.min_flagged_days]
+            for index, episode in enumerate(episodes):
+                # Raised on the day the episode became persistent enough to alert.
+                raised_on = episode[watched.min_flagged_days - 1][0]
                 peak_day, peak_change, p_value, cur, base = max(episode, key=lambda e: e[1])
                 dec = decompose(base, cur, cfg.fully_loaded, f"{label} {watched.label}",
                                 watched.outcome)
                 last_day = episode[-1][0]
+                is_latest = index == len(episodes) - 1
+                reference = episode[watched.min_flagged_days - 1][4]
+                open_ = is_latest and _still_elevated(s, watched, reference, as_of, cfg)
                 alerts.append(
                     Alert(
-                        id=f"{metric}:{channel}:{episode[0][0].isoformat()}",
+                        id=f"{metric}:{channel}:{raised_on.isoformat()}",
                         channel=channel,
                         metric=metric,
                         severity="critical" if peak_change >= 2 * cfg.threshold_pct
                         else "warning",
-                        status="open" if last_day >= last_eval - timedelta(days=1)
-                        else "resolved",
-                        first_detected_on=episode[0][0],
+                        status="open" if open_ else "resolved",
+                        first_detected_on=raised_on,
                         last_detected_on=last_day,
                         peak_on=peak_day,
-                        window_start=peak_day - timedelta(days=cfg.window_days - 1),
+                        window_start=peak_day - timedelta(days=_windows(watched, cfg)[0] - 1),
                         window_end=peak_day,
                         current_value=cur.cost_per(watched.outcome, cfg.fully_loaded) or 0.0,
                         baseline_value=base.cost_per(watched.outcome, cfg.fully_loaded) or 0.0,

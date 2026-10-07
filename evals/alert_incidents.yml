@@ -1,0 +1,15 @@
+# FR-06 alert backtest: regressions injected into the demo dataset (pipelines/demo.py).
+# `uv run caclens alerts-backtest` replays the daily detector over the whole history and
+# reports, per incident, how many days after it began the first alert fired (lead time),
+# plus every alert that matches no incident (false alarms).
+as_of: 2026-09-30
+target_lead_time_days: 3
+max_false_alarms_per_channel_year: 1
+incidents:
+  - channel: meta_ads
+    start: 2026-02-20
+    end: 2026-04-10
+    description: >
+      A new lookalike audience brings in low-quality leads (the good-fit share of Meta
+      leads falls from ~55% to 15%, so lead -> customer conversion roughly halves) and
+      CPCs rise ~20%.

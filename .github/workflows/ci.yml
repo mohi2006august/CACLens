@@ -19,10 +19,11 @@ jobs:
       - run: uv run mypy api pipelines
       - name: Tests (builds the demo warehouse with dbt end to end)
         run: uv run pytest
-      - name: Q&A eval (offline planner)
+      - name: Evals on the demo data (Q&A planner, alert lead time)
         run: |
-          uv run caclens refresh --demo --scale 0.5
+          uv run caclens refresh --demo
           uv run caclens eval
+          uv run caclens alerts-backtest --strict
 
   web:
     name: Web lint, typecheck and build

@@ -1,5 +1,6 @@
 -- Leads are attributed to the touch that created them (first touch at or before the
 -- lead date). Lead counts feed the funnel and the CAC decomposition (FR-06).
+-- `is_qualified` is known at form fill, so it is the earliest lead-quality signal.
 
 with contacts as (
     select * from {{ ref('stg_crm_contacts') }}
@@ -23,6 +24,11 @@ select
     c.lead_at,
     cast(c.lead_at as date) as lead_date,
     c.segment,
+    c.lead_score,
+    case
+        when c.lead_score is not null then c.lead_score >= {{ var('qualified_lead_score') }}
+        else c.is_work_email and c.segment <> 'unknown'
+    end as is_qualified,
     coalesce(lt.channel, 'unattributed') as channel,
     coalesce(lt.campaign, '(none)') as campaign
 from contacts as c

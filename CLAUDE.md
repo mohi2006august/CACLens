@@ -25,6 +25,7 @@ Channel-level CAC, LTV:CAC and payback analytics that join ad spend, CRM and bil
 | `uv run caclens refresh --demo` | Demo data → dbt build → alerts → publish serving snapshot |
 | `uv run pytest` | Tests (`-m "not integration"` skips the end-to-end build) |
 | `uv run caclens eval` | Q&A eval (`--planner claude` to score Claude) |
+| `uv run caclens alerts-backtest` | Alert lead time / false-alarm benchmark (run before changing alerts) |
 
 ## Code Conventions
 

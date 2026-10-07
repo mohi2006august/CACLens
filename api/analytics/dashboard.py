@@ -123,9 +123,10 @@ def overview(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection, start: date,
     }
 
 
-FUNNEL = ["impressions", "clicks", "leads", "opportunities", "new_customers", "paid_spend",
-          "fully_loaded_spend", "ctr", "cpc", "lead_cvr", "opportunity_rate", "customer_cvr",
-          "cac", "cac_fully_loaded"]
+FUNNEL = ["impressions", "clicks", "leads", "qualified_leads", "opportunities", "new_customers",
+          "paid_spend", "fully_loaded_spend", "ctr", "cpc", "lead_cvr", "qualified_lead_rate",
+          "opportunity_rate", "customer_cvr", "cost_per_qualified_lead", "cac",
+          "cac_fully_loaded"]
 
 
 def channel_detail(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection, channel: str,
@@ -140,7 +141,7 @@ def channel_detail(layer: SemanticLayer, conn: duckdb.DuckDBPyConnection, channe
         conn,
         MetricQuery(
             metrics=["cac", "cac_fully_loaded", "cac_lagged", "cpc", "lead_cvr", "customer_cvr",
-                     "new_customers", "paid_spend"],
+                     "qualified_lead_rate", "new_customers", "paid_spend"],
             grain="month", start=add_months(month_start(end), -11), end=end,
             filters=flt, attribution_model=attribution_model,
         ),

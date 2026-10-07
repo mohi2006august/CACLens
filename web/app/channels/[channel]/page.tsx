@@ -57,6 +57,7 @@ export default async function ChannelPage({ params, searchParams }: Props) {
     { key: "impressions", label: "Impressions", rate: null },
     { key: "clicks", label: "Clicks", rate: "ctr" },
     { key: "leads", label: "Leads", rate: "lead_cvr" },
+    { key: "qualified_leads", label: "Qualified leads", rate: "qualified_lead_rate" },
     { key: "opportunities", label: "Opportunities", rate: "opportunity_rate" },
     { key: "new_customers", label: "New customers", rate: "customer_cvr" },
   ];
@@ -74,6 +75,7 @@ export default async function ChannelPage({ params, searchParams }: Props) {
   const cvrSeries = [
     { key: "lead_cvr", label: "Click to lead CVR", color: "var(--series-1)" },
     { key: "customer_cvr", label: "Lead to customer CVR", color: "var(--series-2)" },
+    { key: "qualified_lead_rate", label: "Lead qualification rate", color: "var(--series-3)" },
   ].map((s) => ({ ...s, points: data.trend.map((r) => ({ x: String(r.period), y: n(r, s.key) })) }));
 
   return (
@@ -103,6 +105,7 @@ export default async function ChannelPage({ params, searchParams }: Props) {
         <KpiTile hero label={data.fully_loaded ? "Fully loaded CAC" : "CAC"} metric={cacKey} value={n(cur, cacKey)} change={change(cur, prev, cacKey)} format="currency" upIsGood={false} />
         {isPaid && <KpiTile label="CPC" metric="cpc" value={n(cur, "cpc")} change={change(cur, prev, "cpc")} format="currency" upIsGood={false} />}
         {isPaid && <KpiTile label="Click to lead" metric="lead_cvr" value={n(cur, "lead_cvr")} change={change(cur, prev, "lead_cvr")} format="percent" upIsGood />}
+        <KpiTile label="Lead qualification" metric="qualified_lead_rate" value={n(cur, "qualified_lead_rate")} change={change(cur, prev, "qualified_lead_rate")} format="percent" upIsGood />
         <KpiTile label="Lead to customer" metric="customer_cvr" value={n(cur, "customer_cvr")} change={change(cur, prev, "customer_cvr")} format="percent" upIsGood />
         <KpiTile label="New customers" metric="new_customers" value={n(cur, "new_customers")} change={change(cur, prev, "new_customers")} format="number" upIsGood />
       </section>
@@ -172,7 +175,7 @@ export default async function ChannelPage({ params, searchParams }: Props) {
           <div className="card-head">
             <div>
               <h2>Conversion trend</h2>
-              <p>The two conversion factors behind CAC.</p>
+              <p>The conversion factors behind CAC; qualification moves first when lead quality changes.</p>
             </div>
           </div>
           <LineChart title={`${data.label} conversion rates by month`} summary={`${data.label} monthly click-to-lead and lead-to-customer conversion.`} series={cvrSeries} yFormat="percent" />

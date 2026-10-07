@@ -106,7 +106,7 @@ def test_hubspot_contact_yields_first_and_latest_touches() -> None:
     contact, touches = hubspot.normalize_contact(
         {"id": "501", "properties": {
             "email": "Ann@Acme.com", "createdate": "2026-03-01T10:00:00Z",
-            "company_size": "250", "hs_analytics_source": "PAID_SOCIAL",
+            "company_size": "250", "hubspotscore": "72", "hs_analytics_source": "PAID_SOCIAL",
             "hs_analytics_source_data_1": "Facebook", "hs_analytics_source_data_2": "Spring",
             "hs_analytics_first_timestamp": "2026-02-27T09:00:00Z",
             "hs_latest_source": "EMAIL_MARKETING",
@@ -115,6 +115,7 @@ def test_hubspot_contact_yields_first_and_latest_touches() -> None:
     assert contact["email_hash"] == hash_email("ann@acme.com")
     assert contact["company_domain"] == "acme.com"
     assert contact["segment"] == "mid_market"
+    assert contact["lead_score"] == 72.0
     first, latest = touches
     assert (first["utm_source"], first["utm_medium"], first["utm_campaign"]) == (
         "facebook", "paid_social", "Spring")
@@ -146,6 +147,13 @@ def test_hubspot_search_pages_with_after_cursor() -> None:
                                       datetime(2026, 1, 1)))
     assert [c["contact_id"] for c, _ in out] == ["1", "2"]
     assert json.loads(responses.calls[1].request.body)["after"] == "1"
+
+
+def test_salesforce_rating_becomes_a_lead_score() -> None:
+    hot = salesforce.normalize_person({"Id": "00Q1", "Email": "a@acme.com", "Rating": "Hot",
+                                       "CreatedDate": "2026-03-01T10:30:00.000+0000"}, "lead", LOADED)
+    unrated = salesforce.normalize_person({"Id": "003A", "Email": "b@acme.com"}, "contact", LOADED)
+    assert (hot["lead_score"], unrated["lead_score"]) == (85.0, None)
 
 
 def test_salesforce_timestamps_and_campaign_members() -> None:

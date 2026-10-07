@@ -18,6 +18,15 @@ pnpm dev                        # API on :8000 and web app on :3000
 
 Open <http://localhost:3000>. The demo dataset (Jan 2025 – Sep 2026, ~3.5k customers) has a story built in: in March 2026 a new Meta lookalike audience brings in low-quality leads, so paid social CAC jumps. Try **Ask → "Why did paid social CAC jump in March?"**, open **Alerts** to see the cost-per-opportunity warning that fired a week into it, and tick **Fully loaded** on the Overview to see Meta's LTV:CAC fall below 2x.
 
+**Alert lead time.** CAC itself only moves weeks after a regression starts (customers lag
+leads by the sales cycle), so the alerts also watch *cost per qualified lead*. Lead quality
+is known at form fill from the CRM lead score (or work email + company size), which lets
+the alert fire within days. `uv run caclens alerts-backtest` replays the detector over
+the whole demo history against the incident in `evals/alert_incidents.yml`: the Meta
+regression is caught **2 days** after it starts (1–2 days across four demo seeds; it was
+12 days with CAC and cost-per-opportunity alerts alone), with 0.2–0.6 false alarms per
+channel-year.
+
 To run it under the orchestrator instead: `uv run dagster dev`, then materialize the `daily_refresh` job (it is also scheduled daily at 06:00 UTC).
 
 ## What's in the box
@@ -29,7 +38,7 @@ To run it under the orchestrator instead: `uv run dagster dev`, then materialize
 | FR-03 Blended, paid and per-channel CAC with a fully loaded toggle | `dbt/models/costs/` allocation rules + `semantic/metrics.yml` |
 | FR-04 Cohort LTV with gross margin, payback months and curves | `dbt/models/cohorts/`, `/v1/metrics/payback`, Cohorts screen |
 | FR-05 First, last, linear, time-decay and position-based attribution, compared side by side | `journeys/fct_attribution`, Attribution screen |
-| FR-06 CAC spike alerts with CPC × CVR decomposition | `api/analytics/alerts.py`, `decomposition.py`, Alerts screen |
+| FR-06 CAC spike alerts with CPC × CVR decomposition, plus a qualified-lead early warning (lead time < 3 days) | `api/analytics/alerts.py`, `decomposition.py`, `alert_backtest.py`, Alerts screen |
 | FR-07 Natural-language Q&A over the semantic layer (never raw SQL) | `api/qa/` (Claude tool use + offline planner), `evals/qa_questions.yml` |
 | FR-08 Budget optimiser from marginal CAC curves | `api/analytics/optimiser.py`, Budget optimiser screen |
 
@@ -85,7 +94,7 @@ uv run caclens eval --planner claude  # same 100 questions against Claude (uses 
 | GET | `/v1/metrics/payback?cohort=2026-Q1` | Cohort payback curves |
 | GET | `/v1/overview`, `/v1/channels/{channel}` | Screen payloads |
 | GET | `/v1/cohorts`, `/v1/attribution/compare` | Retention grid, model comparison |
-| GET | `/v1/alerts` | CAC and cost-per-opportunity alerts with drivers |
+| GET | `/v1/alerts` | Early-warning (cost per qualified lead) and CAC alerts with drivers |
 | GET | `/v1/optimiser?budget=` | Recommended budget reallocation |
 | GET | `/v1/data-quality` | Freshness, identity coverage, unattributed share |
 | POST | `/v1/ask` | Question → answer, chart and queries used |
@@ -102,6 +111,7 @@ Interactive docs at <http://localhost:8000/docs>.
 | `uv run dbt build` | Build models + tests (needs raw data: `uv run caclens load --demo`) |
 | `pnpm dev` | API + web app (`pnpm dev:web` / `pnpm dev:api` for one) |
 | `uv run pytest` | Unit + integration tests (`-m "not integration"` for the fast set) |
+| `uv run caclens alerts-backtest` | Alert lead time and false alarms against known incidents |
 | `uv run ruff check .` · `pnpm lint` · `pnpm typecheck` | Linters |
 
 ## Docs
