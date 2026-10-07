@@ -67,6 +67,23 @@ def test_marts_reconcile_to_sources(built_warehouse: Path) -> None:
     assert emails == 0  # PII minimised: only hashes reach the warehouse
 
 
+def test_leads_are_qualified_on_the_score_they_had_at_lead_time(built_warehouse: Path) -> None:
+    """CRMs re-score leads after deals close; today's score must not decide lead quality."""
+    with _warehouse(built_warehouse) as conn:
+        rescored = conn.execute("""
+            select count(*) filter (where not l.is_qualified)
+            from journeys.int_leads l
+            join staging.stg_crm_contacts c using (contact_key)
+            where l.lead_score_at_lead < 50 and c.lead_score >= 50
+        """).fetchone()[0]
+        inconsistent = conn.execute("""
+            select count(*) from journeys.int_leads
+            where qualified_by = 'score_at_lead' and is_qualified <> (lead_score_at_lead >= 50)
+        """).fetchone()[0]
+    assert rescored > 0  # leads that were poor fits then, high-scored now, stay unqualified
+    assert inconsistent == 0
+
+
 def test_health_and_catalog(client: TestClient) -> None:
     health = client.get("/v1/health").json()
     assert health["status"] == "ok" and health["data_through"] == "2026-09-30"
@@ -92,7 +109,10 @@ def test_metric_endpoint_matches_technical_spec(client: TestClient) -> None:
 
 
 def test_channel_detail_explains_the_march_meta_spike(client: TestClient) -> None:
-    body = client.get("/v1/channels/meta_ads?start=2026-03-01&end=2026-03-31").json()
+    # The whole incident (Mar-Apr) vs the two months before: a single month is too
+    # noisy at test scale, and February already holds spike leads from Feb 20.
+    body = client.get("/v1/channels/meta_ads?start=2026-03-01&end=2026-04-30").json()
+    assert body["previous_period"] == {"start": "2025-12-30", "end": "2026-02-28"}
     dec = body["decomposition"]
     assert dec["cac_change_pct"] > 0.2
     assert dec["drivers"][0]["factor"] == "customer_cvr"

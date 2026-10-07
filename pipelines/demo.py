@@ -254,6 +254,31 @@ class _Generator:
             touch_type=touch_type,
         )
 
+    def _score_history(self, contact_id: str, created_at: datetime, initial: float,
+                       convert_at: datetime | None) -> float:
+        """Write the score's history like a CRM would and return today's (current) score.
+
+        The CRM scores a lead minutes after it arrives, re-scores it upward as sales works
+        a deal that closes, and decays stale leads. So the *current* score leaks the
+        outcome; only the score as of lead time is fair to judge lead quality on.
+        """
+        rng = self.rng
+        history = [(created_at + timedelta(minutes=rng.uniform(1, 90)), initial)]
+        if convert_at is not None:
+            bumped = float(round(min(100.0, initial + rng.uniform(25, 45))))
+            history.append((convert_at - timedelta(days=rng.uniform(0, 2)), bumped))
+        elif rng.random() < 0.3:
+            decayed = float(round(max(0.0, initial - rng.uniform(10, 30))))
+            history.append((created_at + timedelta(days=rng.uniform(20, 60)), decayed))
+        current = initial
+        for at, score in history:
+            if at.date() > END or at < created_at:
+                continue
+            current = score
+            self.data.add("crm_score_history", source_system="hubspot", contact_id=contact_id,
+                          score=score, valid_from=at, observation="history")
+        return current
+
     # -- spend ---------------------------------------------------------------------
     def ad_day(self, day: date, campaign: Campaign) -> int:
         rng = self.rng
@@ -328,6 +353,7 @@ class _Generator:
                                              weights=[t[3] for t in NURTURE_TOUCHES])[0]
             self._touch(contact_id, at, src, med, camp, "visit")
 
+        current_score = self._score_history(contact_id, created_at, lead_score, convert_at)
         self.data.add(
             "crm_contacts",
             source_system="hubspot",
@@ -336,7 +362,7 @@ class _Generator:
             email_domain=email_domain(email),
             company_domain=company_domain,
             segment={"smb": "SMB", "mid_market": "Mid-Market", "enterprise": "Enterprise"}[segment],
-            lead_score=lead_score,
+            lead_score=current_score,
             lifecycle_stage="customer" if converts else "lead",
             created_at=created_at,
             became_lead_at=created_at,

@@ -51,3 +51,6 @@ data/serving/
 
 # Local editor/agent launch configs
 .claude/
+
+# Your own labelled alert incidents (real business data)
+evals/*.local.yml

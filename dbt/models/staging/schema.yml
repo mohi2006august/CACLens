@@ -42,6 +42,19 @@ models:
                 to: ref('channels')
                 field: channel
 
+  - name: stg_crm_score_history
+    description: Lead score values with the time they took effect.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [contact_key, valid_from]
+    columns:
+      - name: observation
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [history, snapshot]
+
   - name: stg_crm_deals
     columns:
       - name: deal_key

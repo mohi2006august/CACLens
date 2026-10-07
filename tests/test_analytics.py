@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import random
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -117,3 +118,25 @@ def test_parse_cohort(value: str, start: date, end: date) -> None:
 def test_parse_cohort_rejects_garbage() -> None:
     with pytest.raises(ValueError):
         parse_cohort("2026-Q7")
+
+
+def test_suggest_incidents_finds_the_bad_month_and_backtest_reads_optional_as_of(
+    layer: SemanticLayer, tmp_path: Path
+) -> None:
+    from api.analytics.alert_backtest import format_suggestions, load_spec, suggest_incidents
+
+    rows = []
+    for day in daterange(date(2025, 6, 1), 200):
+        bad = date(2025, 10, 1) <= day <= date(2025, 10, 31)
+        rows.append(acq_row(day, "meta_ads", paid_spend=1000.0, clicks=800.0, leads=40.0,
+                            qualified_leads=8.0 if bad else 20.0,
+                            new_customers=1.0 if bad else 2.0))
+    candidates = suggest_incidents(layer, make_marts(rows))
+    assert [(c.channel, c.start, c.end) for c in candidates] == [
+        ("meta_ads", date(2025, 10, 1), date(2025, 10, 31))]
+    assert "channel: meta_ads" in format_suggestions(candidates)
+
+    spec = tmp_path / "incidents.yml"
+    spec.write_text("incidents:\n  - {channel: meta_ads, start: 2025-10-01, end: 2025-10-31}\n")
+    as_of, incidents, target, max_fa = load_spec(spec)
+    assert as_of is None and target == 3 and max_fa == 1 and incidents[0].channel == "meta_ads"

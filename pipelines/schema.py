@@ -91,6 +91,21 @@ RAW_TABLES: dict[str, RawTable] = {
             "CRM contacts/leads with hashed email, company domain and lead score.",
         ),
         RawTable(
+            "crm_score_history",
+            {
+                "source_system": "VARCHAR",
+                "contact_id": "VARCHAR",
+                "score": "DOUBLE",
+                "valid_from": "TIMESTAMP",
+                "observation": "VARCHAR",
+                "loaded_at": "TIMESTAMP",
+            },
+            ("source_system", "contact_id", "valid_from"),
+            "Lead score values over time: CRM property/field history ('history') plus the "
+            "value seen at each load ('snapshot'). Lets qualification use the score a lead "
+            "had when it arrived, not one updated after it converted.",
+        ),
+        RawTable(
             "crm_touchpoints",
             {
                 "source_system": "VARCHAR",

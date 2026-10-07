@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from api.log import get_logger
 from pipelines.identity import (
     FREE_EMAIL_DOMAINS,
     email_domain,
@@ -15,7 +16,9 @@ from pipelines.identity import (
     normalize_domain,
     normalize_segment,
 )
-from pipelines.sources.http import make_session, request_json, utc_now
+from pipelines.sources.http import SourceError, make_session, request_json, utc_now
+
+log = get_logger(__name__)
 
 SOURCE = "salesforce"
 
@@ -56,6 +59,12 @@ CONTACTS_SOQL = (
 MEMBERS_SOQL = (
     "SELECT Id, LeadId, ContactId, CreatedDate, FirstRespondedDate, "
     "Campaign.Name, Campaign.Type FROM CampaignMember WHERE SystemModstamp >= {since}"
+)
+# Needs field history tracking on Lead.Rating; the first change's OldValue is the rating
+# the lead was created with.
+RATING_HISTORY_SOQL = (
+    "SELECT LeadId, Lead.CreatedDate, OldValue, NewValue, CreatedDate FROM LeadHistory "
+    "WHERE Field = 'Rating' AND CreatedDate >= {since} ORDER BY LeadId, CreatedDate"
 )
 OPPS_SOQL = (
     "SELECT Id, ContactId, Amount, StageName, IsWon, IsClosed, CreatedDate, CloseDate "
@@ -198,6 +207,54 @@ class SalesforceClient:
             if not next_url:
                 return
             page = request_json(self.session, "GET", f"{self.instance_url}{next_url}", source=SOURCE)
+
+
+def score_snapshot(person: dict[str, Any]) -> dict[str, Any] | None:
+    if person.get("lead_score") is None:
+        return None
+    return {
+        "source_system": SOURCE,
+        "contact_id": person["contact_id"],
+        "score": person["lead_score"],
+        "valid_from": person["loaded_at"],
+        "observation": "snapshot",
+        "loaded_at": person["loaded_at"],
+    }
+
+
+def normalize_rating_history(records: list[dict[str, Any]], loaded_at: datetime
+                             ) -> list[dict[str, Any]]:
+    """Rows sorted by lead then time -> score history including the initial rating."""
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for rec in records:
+        lead_id = rec["LeadId"]
+        if lead_id not in seen:
+            seen.add(lead_id)
+            initial = RATING_SCORES.get(str(rec.get("OldValue") or "").lower())
+            created = parse_ts((rec.get("Lead") or {}).get("CreatedDate"))
+            if initial is not None and created is not None:
+                rows.append({"source_system": SOURCE, "contact_id": lead_id, "score": initial,
+                             "valid_from": created, "observation": "history",
+                             "loaded_at": loaded_at})
+        new = RATING_SCORES.get(str(rec.get("NewValue") or "").lower())
+        changed = parse_ts(rec.get("CreatedDate"))
+        if new is not None and changed is not None:
+            rows.append({"source_system": SOURCE, "contact_id": lead_id, "score": new,
+                         "valid_from": changed, "observation": "history",
+                         "loaded_at": loaded_at})
+    return rows
+
+
+def fetch_rating_history(config: SalesforceConfig, since: datetime) -> Iterator[dict[str, Any]]:
+    client = SalesforceClient(config)
+    try:
+        records = list(client.query(RATING_HISTORY_SOQL.format(since=soql_datetime(since))))
+    except SourceError as exc:
+        # Field history tracking is optional in Salesforce; without it we rely on snapshots.
+        log.warning("salesforce_rating_history_unavailable", error=str(exc))
+        return
+    yield from normalize_rating_history(records, utc_now())
 
 
 def fetch_contacts(config: SalesforceConfig, since: datetime) -> Iterator[dict[str, Any]]:

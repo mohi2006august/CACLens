@@ -15,6 +15,8 @@ sources:
         description: CRM contacts/leads; emails are SHA-256 hashed at extraction.
       - name: crm_touchpoints
         description: UTM-tagged marketing touches per contact.
+      - name: crm_score_history
+        description: Lead score values over time (CRM history plus per-load snapshots).
       - name: crm_deals
         description: CRM deals/opportunities.
       - name: stripe_customers

@@ -71,6 +71,9 @@ tests/           unit tests + an end-to-end integration test
 1. `cp .env.example .env` and fill in the connectors you use (unset ones are skipped). Set `CACLENS_DEMO=false`.
 2. Map your teams to channels in `dbt/seeds/cost_allocation_rules.csv` and your UTM conventions in `dbt/seeds/channel_mapping.csv`.
 3. Run `uv run caclens refresh` (or let the Dagster schedule run it). The first run backfills from `CACLENS_BACKFILL_START` (default 2024-01-01); later runs are incremental.
+4. Check the alerts against your own history. `uv run caclens alerts-backtest --suggest > evals/alert_incidents.local.yml` lists months where a paid channel's CAC or cost per qualified lead ran well above normal; keep only the real regressions, set each `start` to the day the cause began, then run `uv run caclens alerts-backtest --incidents evals/alert_incidents.local.yml`. (`*.local.yml` is git-ignored.)
+
+Lead quality uses the CRM lead score **as of lead time** (HubSpot property history, Salesforce `Lead.Rating` field history when tracking is on, plus a snapshot at every load). CRMs re-score leads after deals close, so today's score would leak outcomes into "lead quality"; on the demo data it makes unqualified leads look like they convert at 0.2% instead of the true 2.3%.
 
 Emails are SHA-256 hashed inside the loaders, so plaintext never reaches the warehouse. Connectors only need read scopes.
 

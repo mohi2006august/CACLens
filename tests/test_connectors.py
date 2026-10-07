@@ -122,6 +122,30 @@ def test_hubspot_contact_yields_first_and_latest_touches() -> None:
     assert (latest["utm_source"], latest["utm_medium"]) == ("email", "email")
 
 
+@responses.activate
+def test_hubspot_score_history_via_batch_read() -> None:
+    url = f"{hubspot.BASE}/crm/v3/objects/contacts/batch/read"
+    responses.post(url, json={"results": [{"id": "501", "propertiesWithHistory": {"hubspotscore": [
+        {"value": "88", "timestamp": "2026-04-02T10:00:00Z"},  # re-scored after the deal
+        {"value": "31", "timestamp": "2026-03-01T10:05:00Z"},  # score at form fill
+        {"value": "", "timestamp": "2026-03-01T10:00:00Z"},
+    ]}}]})
+    ids = [str(i) for i in range(120)]
+    rows = list(hubspot.fetch_score_history(hubspot.HubSpotConfig("t", "company_size"), ids))
+    assert len(responses.calls) == 3  # 50-id batches
+    assert json.loads(responses.calls[0].request.body)["propertiesWithHistory"] == ["hubspotscore"]
+    first_batch = [r for r in rows][:2]
+    assert {(r["score"], r["valid_from"]) for r in first_batch} == {
+        (88.0, datetime(2026, 4, 2, 10)), (31.0, datetime(2026, 3, 1, 10, 5))}
+    assert all(r["observation"] == "history" for r in rows)
+
+
+def test_hubspot_snapshot_only_when_scored() -> None:
+    contact = {"contact_id": "1", "lead_score": 40.0, "loaded_at": LOADED}
+    assert hubspot.score_snapshot(contact)["valid_from"] == LOADED
+    assert hubspot.score_snapshot({**contact, "lead_score": None}) is None
+
+
 def test_hubspot_free_mail_has_no_company_domain() -> None:
     contact, _ = hubspot.normalize_contact(
         {"id": "1", "properties": {"email": "x@gmail.com", "createdate": "2026-03-01"}},
@@ -154,6 +178,25 @@ def test_salesforce_rating_becomes_a_lead_score() -> None:
                                        "CreatedDate": "2026-03-01T10:30:00.000+0000"}, "lead", LOADED)
     unrated = salesforce.normalize_person({"Id": "003A", "Email": "b@acme.com"}, "contact", LOADED)
     assert (hot["lead_score"], unrated["lead_score"]) == (85.0, None)
+
+
+def test_salesforce_rating_history_recovers_the_initial_rating() -> None:
+    rows = salesforce.normalize_rating_history([
+        {"LeadId": "00Q1", "Lead": {"CreatedDate": "2026-03-01T09:00:00.000+0000"},
+         "OldValue": "Cold", "NewValue": "Hot", "CreatedDate": "2026-04-01T09:00:00.000+0000"},
+    ], LOADED)
+    assert [(r["score"], r["valid_from"]) for r in rows] == [
+        (25.0, datetime(2026, 3, 1, 9)), (85.0, datetime(2026, 4, 1, 9))]
+
+
+@responses.activate
+def test_salesforce_rating_history_is_optional() -> None:
+    inst = "https://acme.my.salesforce.com"
+    responses.post(f"{inst}/services/oauth2/token", json={"access_token": "t", "instance_url": inst})
+    responses.get(f"{inst}/services/data/v61.0/query", status=400,
+                  json=[{"errorCode": "INVALID_TYPE"}])
+    config = salesforce.SalesforceConfig(inst, "id", "s", "v61.0")
+    assert list(salesforce.fetch_rating_history(config, datetime(2026, 1, 1))) == []
 
 
 def test_salesforce_timestamps_and_campaign_members() -> None:

@@ -45,13 +45,23 @@ def _cmd_alerts(_args: argparse.Namespace) -> int:
 
 
 def _cmd_alerts_backtest(args: argparse.Namespace) -> int:
-    from api.analytics.alert_backtest import backtest, format_report
+    from api.analytics.alert_backtest import (
+        backtest,
+        format_report,
+        format_suggestions,
+        suggest_incidents,
+    )
     from api.analytics.common import semantic_layer
+    from api.config import resolve_path
     from api.warehouse import connect
     from pipelines.refresh import alert_config
 
     with connect() as conn:
-        result = backtest(semantic_layer(), conn, alert_config(get_settings()))
+        if args.suggest:
+            print(format_suggestions(suggest_incidents(semantic_layer(), conn)))
+            return 0
+        result = backtest(semantic_layer(), conn, alert_config(get_settings()),
+                          resolve_path(args.incidents))
     print(json.dumps(result.to_dict(), indent=2) if args.json else format_report(result))
     return 0 if result.passed or not args.strict else 1
 
@@ -102,6 +112,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("alerts-backtest",
                        help="score alert lead time and false alarms (evals/alert_incidents.yml)")
+    p.add_argument("--incidents", default="evals/alert_incidents.yml",
+                   help="incident file (YAML) to score against")
+    p.add_argument("--suggest", action="store_true",
+                   help="print candidate incidents from history to start labelling your own")
     p.add_argument("--json", action="store_true")
     p.add_argument("--strict", action="store_true", help="exit 1 when the targets are missed")
     p.set_defaults(func=_cmd_alerts_backtest)

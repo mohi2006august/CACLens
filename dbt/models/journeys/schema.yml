@@ -60,6 +60,11 @@ models:
         data_tests: [unique, not_null]
       - name: is_qualified
         data_tests: [not_null]
+      - name: qualified_by
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [score_at_lead, fit_rule]
 
   - name: int_opportunities
     columns:

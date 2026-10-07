@@ -2,7 +2,8 @@
 
 {% set tables = [
     ('ad_spend_daily', 'ads'), ('crm_contacts', 'crm'), ('crm_touchpoints', 'crm'),
-    ('crm_deals', 'crm'), ('stripe_customers', 'billing'), ('stripe_invoices', 'billing'),
+    ('crm_deals', 'crm'), ('crm_score_history', 'crm'),
+    ('stripe_customers', 'billing'), ('stripe_invoices', 'billing'),
     ('stripe_refunds', 'billing'), ('stripe_disputes', 'billing'),
     ('payroll_costs', 'costs'), ('tool_costs', 'costs')
 ] %}

@@ -24,6 +24,7 @@ from pipelines.sources.http import make_session, request_json, utc_now
 SOURCE = "hubspot"
 BASE = "https://api.hubapi.com"
 SEARCH_LIMIT = 10_000  # HubSpot search returns at most 10k results per query
+HISTORY_BATCH = 50  # batch read with propertiesWithHistory accepts 50 ids per call
 
 # HubSpot analytics source -> (utm_source fallback, utm_medium)
 SOURCE_MAP: dict[str, tuple[str | None, str]] = {
@@ -160,6 +161,55 @@ def normalize_contact(
     for touch in touches:
         touch.update(source_system=SOURCE, contact_id=contact_id, loaded_at=loaded_at)
     return contact, touches
+
+
+def score_snapshot(contact: dict[str, Any]) -> dict[str, Any] | None:
+    """The score as seen at this load: valid from (at latest) the load time."""
+    if contact.get("lead_score") is None:
+        return None
+    return {
+        "source_system": SOURCE,
+        "contact_id": contact["contact_id"],
+        "score": contact["lead_score"],
+        "valid_from": contact["loaded_at"],
+        "observation": "snapshot",
+        "loaded_at": contact["loaded_at"],
+    }
+
+
+def normalize_score_history(
+    record: dict[str, Any], lead_score_property: str, loaded_at: datetime
+) -> list[dict[str, Any]]:
+    rows = []
+    for entry in (record.get("propertiesWithHistory") or {}).get(lead_score_property, []):
+        score, at = parse_score(entry.get("value")), parse_ts(entry.get("timestamp"))
+        if score is None or at is None:
+            continue
+        rows.append({
+            "source_system": SOURCE,
+            "contact_id": str(record["id"]),
+            "score": score,
+            "valid_from": at,
+            "observation": "history",
+            "loaded_at": loaded_at,
+        })
+    return rows
+
+
+def fetch_score_history(config: HubSpotConfig, contact_ids: list[str]) -> Iterator[dict[str, Any]]:
+    """Every value the lead score property has had, with when it was set."""
+    session = make_session({"Authorization": f"Bearer {config.token}"})
+    loaded_at = utc_now()
+    for i in range(0, len(contact_ids), HISTORY_BATCH):
+        body = {
+            "properties": [],
+            "propertiesWithHistory": [config.lead_score_property],
+            "inputs": [{"id": cid} for cid in contact_ids[i:i + HISTORY_BATCH]],
+        }
+        page = request_json(session, "POST", f"{BASE}/crm/v3/objects/contacts/batch/read",
+                            source=SOURCE, json=body)
+        for record in page.get("results", []):
+            yield from normalize_score_history(record, config.lead_score_property, loaded_at)
 
 
 def normalize_deal(record: dict[str, Any], loaded_at: datetime) -> dict[str, Any]:

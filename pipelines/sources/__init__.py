@@ -48,10 +48,17 @@ def _ads(fetch: Callable[[Any, date, date], Iterator[dict[str, Any]]],
 def _hubspot(window: Window) -> Iterator[Routed]:
     config = hubspot.HubSpotConfig.from_env()
     assert config is not None
+    contact_ids: list[str] = []
     for contact, touches in hubspot.fetch_contacts(config, window.since):
         yield "crm_contacts", contact
+        contact_ids.append(contact["contact_id"])
+        snapshot = hubspot.score_snapshot(contact)
+        if snapshot:
+            yield "crm_score_history", snapshot
         for touch in touches:
             yield "crm_touchpoints", touch
+    for row in hubspot.fetch_score_history(config, contact_ids):
+        yield "crm_score_history", row
     for deal in hubspot.fetch_deals(config):
         yield "crm_deals", deal
 
@@ -61,6 +68,11 @@ def _salesforce(window: Window) -> Iterator[Routed]:
     assert config is not None
     for row in salesforce.fetch_contacts(config, window.since):
         yield "crm_contacts", row
+        snapshot = salesforce.score_snapshot(row)
+        if snapshot:
+            yield "crm_score_history", snapshot
+    for row in salesforce.fetch_rating_history(config, window.since):
+        yield "crm_score_history", row
     for row in salesforce.fetch_touchpoints(config, window.since):
         yield "crm_touchpoints", row
     for row in salesforce.fetch_deals(config, window.since):
@@ -110,12 +122,14 @@ SOURCES: dict[str, SourceSpec] = {
             _ads(linkedin.fetch_spend, linkedin.LinkedInConfig.from_env),
         ),
         SourceSpec(
-            "hubspot", "crm", ("crm_contacts", "crm_touchpoints", "crm_deals"),
+            "hubspot", "crm",
+            ("crm_contacts", "crm_touchpoints", "crm_deals", "crm_score_history"),
             lambda: hubspot.HubSpotConfig.from_env() is not None,
             _hubspot,
         ),
         SourceSpec(
-            "salesforce", "crm", ("crm_contacts", "crm_touchpoints", "crm_deals"),
+            "salesforce", "crm",
+            ("crm_contacts", "crm_touchpoints", "crm_deals", "crm_score_history"),
             lambda: salesforce.SalesforceConfig.from_env() is not None,
             _salesforce,
         ),
