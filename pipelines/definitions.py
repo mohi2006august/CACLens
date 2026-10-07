@@ -50,7 +50,7 @@ RAW_GROUPS = {
     ],
     can_subset=False,
 )
-def raw_tables(context: dg.AssetExecutionContext) -> Iterator[dg.MaterializeResult]:
+def raw_tables(context: dg.AssetExecutionContext) -> Iterator[dg.MaterializeResult[None]]:
     """FR-01 load every configured connector (or the synthetic dataset in demo mode)."""
     settings = get_settings()
     loaded: dict[str, Any] = load_raw(settings)
@@ -80,7 +80,7 @@ def caclens_dbt_models(context: dg.AssetExecutionContext, dbt: DbtCliResource) -
     kinds={"python"},
     description="FR-06 CAC and cost-per-opportunity spike detection with driver decomposition.",
 )
-def cac_alerts(context: dg.AssetExecutionContext) -> dg.MaterializeResult:
+def cac_alerts(context: dg.AssetExecutionContext) -> dg.MaterializeResult[None]:
     n = compute_alerts(get_settings())
     context.log.info(f"{n} alert episodes")
     return dg.MaterializeResult(metadata={"alert_episodes": n})
@@ -93,7 +93,7 @@ def cac_alerts(context: dg.AssetExecutionContext) -> dg.MaterializeResult:
     kinds={"duckdb"},
     description="Read-only snapshot the API serves; only published after dbt tests pass.",
 )
-def serving_snapshot(context: dg.AssetExecutionContext) -> dg.MaterializeResult:
+def serving_snapshot(context: dg.AssetExecutionContext) -> dg.MaterializeResult[None]:
     snapshot = publish(get_settings())
     context.log.info(f"published {snapshot.name}")
     return dg.MaterializeResult(metadata={"snapshot": snapshot.name})

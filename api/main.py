@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from functools import lru_cache
-from typing import Annotated, Any
+from typing import Annotated, Any, cast, get_args
 
 import duckdb
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -21,7 +21,16 @@ from api.analytics.alerts import AlertConfig, detect_alerts, read_alerts
 from api.analytics.common import data_bounds, default_range, semantic_layer
 from api.config import get_settings
 from api.log import configure_logging, get_logger
-from api.semantic import GRAINS, Grain, MetricQuery, QueryFilter, SemanticError, SemanticLayer
+from api.semantic import (
+    GRAINS,
+    FilterOp,
+    Grain,
+    MetricQuery,
+    QueryFilter,
+    Scalar,
+    SemanticError,
+    SemanticLayer,
+)
 from api.warehouse import WarehouseNotReady, connect, serving_path, table_exists
 
 configure_logging()
@@ -154,9 +163,11 @@ def _parse_filter(raw: str) -> QueryFilter:
         return QueryFilter(dimension=dim, op="eq", value=value)
     if len(parts) == 3:
         dim, op, value = parts
-        if op in ("in", "not_in"):
-            return QueryFilter(dimension=dim, op=op, value=value.split(","))
-        return QueryFilter(dimension=dim, op=op, value=value)  # type: ignore[arg-type]
+        if op not in get_args(FilterOp):
+            raise HTTPException(400, f"unknown filter operator '{op}'")
+        values: list[Scalar] = list(value.split(","))
+        return QueryFilter(dimension=dim, op=cast(FilterOp, op),
+                           value=values if op in ("in", "not_in") else value)
     raise HTTPException(400, "filter must be dimension:value or dimension:op:value")
 
 

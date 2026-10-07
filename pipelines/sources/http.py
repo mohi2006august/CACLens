@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -58,7 +59,7 @@ def request_json(
             "source_http_error",
             source=source,
             status=response.status_code,
-            path=requests.utils.urlparse(url).path,
+            path=urlparse(url).path,
             body=response.text[:500],
         )
         raise SourceError(f"{source} returned HTTP {response.status_code}")

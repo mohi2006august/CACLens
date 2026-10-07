@@ -16,6 +16,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --locked
       - run: uv run ruff check .
+      - run: uv run mypy api pipelines
       - name: Tests (builds the demo warehouse with dbt end to end)
         run: uv run pytest
       - name: Q&A eval (offline planner)

@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, cast
 
 import anthropic
 import duckdb
+from anthropic.types.beta import (
+    BetaMessageParam,
+    BetaTextBlock,
+    BetaTextBlockParam,
+    BetaToolParam,
+    BetaToolUseBlock,
+)
 
 from api.log import get_logger
 from api.qa.answer import Answer, AskContext, finalize
@@ -89,18 +96,18 @@ class ClaudeAgent:
         self.model = model
         self.client = client or anthropic.Anthropic(api_key=api_key)
         self.effort = os.environ.get("CACLENS_QA_EFFORT", "medium")
-        self.system = [
+        self.system: list[BetaTextBlockParam] = [
             {
                 "type": "text",
                 "text": SYSTEM_PROMPT.format(catalog=build_catalog(layer)),
                 "cache_control": {"type": "ephemeral"},
             }
         ]
-        self.tools = tool_definitions(layer)
+        self.tools = cast(list[BetaToolParam], tool_definitions(layer))
 
     def ask(self, conn: duckdb.DuckDBPyConnection, question: str, ctx: AskContext) -> Answer:
         answer = Answer(question=question, answer="", planner="claude", model=self.model)
-        messages: list[dict[str, Any]] = [
+        messages: list[BetaMessageParam] = [
             {"role": "user", "content": f"{context_block(ctx)}\n\n{question}"}
         ]
         for _turn in range(MAX_TURNS):
@@ -110,7 +117,7 @@ class ClaudeAgent:
                 system=self.system,
                 tools=self.tools,
                 messages=messages,
-                output_config={"effort": self.effort},
+                output_config=cast(Any, {"effort": self.effort}),
                 betas=[FALLBACK_BETA],
                 fallbacks="default",
             )
@@ -118,14 +125,16 @@ class ClaudeAgent:
                 answer.answer = "I can't help with that request. Try a question about CAC, " \
                     "LTV, payback, spend or conversion."
                 return finalize(self.layer, answer)
-            tool_uses = [b for b in response.content if b.type == "tool_use"]
+            tool_uses = [cast(BetaToolUseBlock, b) for b in response.content if b.type == "tool_use"]
             if response.stop_reason != "tool_use" or not tool_uses:
-                text = "".join(b.text for b in response.content if b.type == "text").strip()
+                text = "".join(
+                    cast(BetaTextBlock, b).text for b in response.content if b.type == "text"
+                ).strip()
                 answer.answer = text or "I could not produce an answer from the available data."
                 return finalize(self.layer, answer)
 
             messages.append({"role": "assistant", "content": response.content})
-            results = []
+            results: list[Any] = []
             for block in tool_uses:
                 call = execute_tool(self.layer, conn, block.name, dict(block.input))
                 answer.calls.append(call)

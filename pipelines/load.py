@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import dlt
 import duckdb
@@ -68,7 +68,7 @@ def _hints(table: str) -> Any:
         table_name=table,
         write_disposition="merge",
         primary_key=list(spec.primary_key),
-        columns=spec.dlt_columns(),
+        columns=cast(Any, spec.dlt_columns()),  # plain dicts satisfy dlt's TColumnSchema
     )
 
 

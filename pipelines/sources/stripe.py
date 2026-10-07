@@ -36,8 +36,8 @@ def ts(value: int | None) -> datetime | None:
 
 def _customer_id(value: Any) -> str | None:
     if isinstance(value, dict):
-        return value.get("id")
-    return value
+        value = value.get("id")
+    return str(value) if value else None
 
 
 def normalize_customer(obj: dict[str, Any], metadata_key: str, loaded_at: datetime) -> dict[str, Any]:

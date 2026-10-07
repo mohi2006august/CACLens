@@ -27,6 +27,13 @@ MIN_B, MAX_B = 0.3, 0.95
 
 
 @dataclass(frozen=True)
+class _Channel:
+    channel: str
+    curve: ResponseCurve
+    current: float
+
+
+@dataclass(frozen=True)
 class ResponseCurve:
     a: float
     b: float
@@ -100,7 +107,7 @@ def optimise(
     for row in result.rows:
         by_channel.setdefault(row["channel"], []).append(row)
 
-    channels = []
+    channels: list[_Channel] = []
     for channel, rows in sorted(by_channel.items()):
         rows.sort(key=lambda r: r["period"])
         points = [(r["paid_spend"] or 0.0, r["new_customers"] or 0.0) for r in rows]
@@ -109,15 +116,15 @@ def optimise(
         current = sum(r["paid_spend"] or 0 for r in recent) / len(recent)
         if current <= 0 or curve.a <= 0:
             continue
-        channels.append({"channel": channel, "curve": curve, "current": current})
+        channels.append(_Channel(channel, curve, float(current)))
 
     if not channels:
         return {"channels": [], "budget": 0.0, "message": "No paid channel spend to optimise."}
 
-    total_current = sum(c["current"] for c in channels)
+    total_current = sum(c.current for c in channels)
     total_budget = budget if budget and budget > 0 else total_current
-    lower = {c["channel"]: c["current"] * min_ratio for c in channels}
-    upper = {c["channel"]: c["current"] * max_ratio * max(1.0, total_budget / total_current)
+    lower = {c.channel: c.current * min_ratio for c in channels}
+    upper = {c.channel: c.current * max_ratio * max(1.0, total_budget / total_current)
              for c in channels}
     alloc = dict(lower)
     remaining = total_budget - sum(alloc.values())
@@ -126,7 +133,7 @@ def optimise(
         alloc = {k: v * scale for k, v in lower.items()}
         remaining = 0.0
     step = total_budget / steps
-    curves = {c["channel"]: c["curve"] for c in channels}
+    curves = {c.channel: c.curve for c in channels}
     while remaining > 1e-6:
         amount = min(step, remaining)
         best, best_gain = None, 0.0
@@ -141,9 +148,9 @@ def optimise(
         alloc[best] += amount
         remaining -= amount
 
-    out = []
+    out: list[dict[str, Any]] = []
     for c in channels:
-        name, curve, current = c["channel"], c["curve"], c["current"]
+        name, curve, current = c.channel, c.curve, c.current
         recommended = alloc[name]
         cur_customers = curve.customers(current)
         rec_customers = curve.customers(recommended)
